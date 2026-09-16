@@ -1,0 +1,32 @@
+{
+  "name": "excerpt-match-workspace",
+  "version": "1.0.0",
+  "private": true,
+  "description": "monorepo 根目录：不发布，仅用于统一管理子包",
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "pnpm@12.4.1",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "build": "pnpm -r --filter \"./packages/*\" run build",
+    "build:packages": "pnpm -r --filter \"./packages/*\" run build",
+    "clean": "pnpm -r exec rm -rf dist && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "@isdk/nlp-jieba": "^2.2.2",
+    "@types/diff-match-patch": "^1.0.32",
+    "@types/node": "^20.11.0",
+    "cjk-number": "^1.0.0",
+    "diff-match-patch": "^1.0.5",
+    "diff-match-patch-es": "^2.0.1",
+    "mdast-util-from-markdown": "^2.0.2",
+    "mdast-util-gfm": "^3.0.0",
+    "micromark-extension-gfm": "^3.0.0",
+    "secondary-cache": "^2.1.2",
+    "tsup": "^8.0.0",
+    "typescript": "^5.3.0",
+    "vitest": "^1.2.0"
+  }
+}

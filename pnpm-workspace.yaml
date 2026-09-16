@@ -1,0 +1,11 @@
+# pnpm workspace —— 子包用 workspace:* 互引，pnpm 用硬链接，省磁盘
+packages:
+  - 'packages/*'
+
+# pnpm 10+ 默认不执行依赖的 build scripts，缺失的会报 ERR_PNPM_IGNORED_BUILDS。
+# esbuild 需要 postinstall 放置平台二进制，故在此显式放行 ——
+# 这样无需交互式 `pnpm approve-builds`，CI 与本地首次安装都能一次通过。
+#
+# pnpm 12 起用 allowBuilds（布尔值）替代 onlyBuiltDependencies（数组）。
+allowBuilds:
+  esbuild: true

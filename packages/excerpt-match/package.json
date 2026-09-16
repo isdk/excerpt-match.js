@@ -1,0 +1,103 @@
+{
+  "name": "@isdk/excerpt-match",
+  "version": "1.0.0",
+  "workspaces": [
+    "packages/*"
+  ],
+  "type": "module",
+  "main": "./src/index.ts",
+  "module": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build": "tsup",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@isdk/normalize-text": "workspace:*",
+    "@isdk/zh-negation": "workspace:*",
+    "@isdk/zh-particles": "workspace:*",
+    "@isdk/whitespace-semantics": "workspace:*",
+    "@isdk/md-flatten": "workspace:*",
+    "@isdk/approx-text-match": "workspace:*",
+    "@isdk/semantic-locate": "workspace:*",
+    "@isdk/identifier-variants": "workspace:*",
+    "secondary-cache": "^2.1.2"
+  },
+  "peerDependencies": {
+    "diff-match-patch": "^1.0.5",
+    "mdast-util-from-markdown": "^2.0.2",
+    "mdast-util-gfm": "^3.0.0",
+    "micromark-extension-gfm": "^3.0.0",
+    "diff-match-patch-es": "^2.0.1",
+    "@isdk/nlp-jieba": "^2.2.2",
+    "cjk-number": ">=0.2.0"
+  },
+  "peerDependenciesMeta": {
+    "diff-match-patch": {
+      "optional": true
+    },
+    "mdast-util-from-markdown": {
+      "optional": true
+    },
+    "mdast-util-gfm": {
+      "optional": true
+    },
+    "micromark-extension-gfm": {
+      "optional": true
+    },
+    "diff-match-patch-es": {
+      "optional": true
+    },
+    "@isdk/nlp-jieba": {
+      "optional": true
+    },
+    "cjk-number": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@isdk/nlp-jieba": "^2.2.2",
+    "@types/diff-match-patch": "^1.0.32",
+    "@types/node": "^20.11.0",
+    "cjk-number": "^1.0.0",
+    "diff-match-patch": "^1.0.5",
+    "diff-match-patch-es": "^2.0.1",
+    "mdast-util-from-markdown": "^2.0.2",
+    "mdast-util-gfm": "^3.0.0",
+    "micromark-extension-gfm": "^3.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.3.0",
+    "vitest": "^1.2.0"
+  },
+  "packageManager": "pnpm@12.4.1",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  },
+  "description": "在 markdown 正文中定位摘录出处，返回精确的源码坐标（index/length）",
+  "publishConfig": {
+    "main": "./dist/index.cjs",
+    "module": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js",
+        "require": "./dist/index.cjs"
+      }
+    }
+  }
+}

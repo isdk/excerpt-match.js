@@ -1,0 +1,913 @@
+# excerpt-match
+
+English | [中文](./README.md)
+
+Determine whether an excerpt comes from a page's body text, and locate its
+**exact position and length in the source (markdown) content**.
+
+Tiered matching, language-agnostic, zero-dependency core.
+
+---
+
+## The problem it solves
+
+`pageContent` is markdown **source**, while the excerpt was copied by a user from the
+**rendered page**. A rendering step sits between them:
+
+```
+md source : 本院**认为**被告构成[根本违约](http://x.com)。
+rendered  : 本院认为被告构成根本违约。
+copied    : 本院认为被告构成根本违约。
+```
+
+A plain `indexOf` fails: `**` and `](url)` do not exist after rendering.
+This library first flattens the markdown into "text visible after rendering" while
+**keeping an exact per-character mapping back to the source**, so it can both match
+against visible text and return source coordinates.
+
+## Presets
+
+Most of the 25 options are scene-dependent; you should not re-weigh them at
+every call site. Pick a `preset` once — **explicit options override it**:
+
+```ts
+locateExcerpt(ex, page, { preset: 'strict' });
+locateExcerpt(ex, page, { preset: 'loose', ignorePunctuation: false });
+```
+
+| preset | for | trade-off |
+|---|---|---|
+| `strict` | citation checking / forensics | prefer a miss to a false hit; no cross-block, no segmented anchors, no fuzzy |
+| `default` | highlighting / anchoring / notes | balanced; segmented anchors and cross-block allowed |
+| `loose` | dedup / retrieval | maximize recall, rank by `score`; ignores punctuation, merges identifier variants |
+
+All three keep `checkPolarity: true` and leave `cjkNumerals` and
+`ignoreParticles` off — the first makes different words converge to the same
+string (a source of false hits), the second is a typo, not a semantic equivalence.
+
+## Quick start
+
+```bash
+npm install
+```
+
+```ts
+import {
+  locateExcerpt,
+  createPageIndex,
+  createMdastFlattener,
+} from './src';
+import { fromMarkdown } from 'mdast-util-from-markdown';
+import { gfm } from 'micromark-extension-gfm';
+import { gfmFromMarkdown } from 'mdast-util-gfm';
+
+// 1) Build the flattener (required for markdown)
+const md = createMdastFlattener(fromMarkdown, {
+  extensions: [gfm()],
+  mdastExtensions: [gfmFromMarkdown()],
+});
+
+// 2) Locate
+const r = locateExcerpt('本院认为，被告的行为构成违约', mdSource, { markdown: md });
+
+if (r.kind !== 'none') {
+  // The coordinate contract always holds
+  const span = mdSource.slice(r.index, r.index + r.length);
+  console.log(r.kind, r.score, span);
+}
+```
+
+When matching **many** excerpts against one page, always reuse the index
+(see [Performance](#performance)).
+
+## Return contract
+
+Hit or miss, the shape is the same — it **never returns `null`**:
+
+```ts
+interface ExcerptMatch {
+  index: number;           // start offset within pageContent
+  length: number;          // slice(index, index + length) is the matched span
+  kind: MatchKind;         // which tier matched
+  score: number;           // 0..1, 1 = exact
+  occurrences: number;     // hit count; >1 means ambiguous
+  crossesBlocks?: boolean; // spans multiple blocks (markdown only)
+  via?: string;            // which fallback produced it
+}
+```
+
+On miss: `{ kind: 'none', index: -1, length: 0, score: 0 }` (i.e. `MISS`).
+
+> Why not `null`: "does this come from the page?" is not a boolean — it is a tiered
+> conclusion with confidence. Returning `null` throws away the most valuable signal,
+> the *near miss*, which is exactly what OCR noise, layout drift, or light rewording
+> look like.
+
+## Tiers
+
+| Tier | kind | Tolerates | Implemented by |
+|---|---|---|---|
+| T0 | `exact` | nothing | `indexOf` on visible text |
+| T1 | `normalized` | whitespace / full-width / punctuation / case / zero-width | built-in normalization |
+| T2 | `segmented` | ellipsis in the excerpt (`……`) | built-in anchor chain |
+| T3 | `fuzzy` | typos, insertions, deletions | external matcher (diff-match-patch) |
+| T4 | `semantic` | paraphrase, synonym rewriting | external retriever (embedding / BM25) |
+| — | `none` | — | no match |
+
+**T3 / T4 are off by default**: without `fallbacks` there is no fuzzy matching at all.
+Strict scenarios (citation verification, forensics) get purely deterministic results.
+
+### Choosing a configuration
+
+| Use case | Recommendation |
+|---|---|
+| Citation verification / forensics | no `fallbacks`; T0–T2 only |
+| Highlighting / note anchoring | `fallbacks: [fuzzy]`, `minFallbackScore: 0.85` |
+| Dedup / recall | everything on; sort by `kind + score`; semantic on a separate path |
+
+## Coordinate contract
+
+`index` / `length` are **exact offsets and lengths within `pageContent`**.
+
+- In markdown mode `length` is the **source length** (markup included), which is larger
+  than the rendered character count: the excerpt `被告的行为已经构成根本违约` is 13
+  rendered characters but its source
+  `**被告**的行为已经构成[根本违约](http://a.b/c)` is 33 characters.
+- Each character carries two coordinates, `map` and `mapEnd`. `mapEnd` cannot be derived
+  from `map`: escapes (`\*` → `*`) and entities (`&amp;` → `&`) make one visible
+  character span multiple source characters.
+- Spans are expanded outward to **complete inline markers**, so you never get a
+  half-slice like `被告**的行为`: the excerpt `被告` yields the span `**被告**`.
+
+### Known limitation
+
+If an excerpt starts or ends *inside* an inline construct (e.g. it stops midway through
+`[根本违约](url)` at `根本`), exactness and standalone renderability cannot both hold —
+appending `](url)` adds `违约`, omitting it leaves a broken link.
+This library chooses **exactness**; if you need a renderable fragment, expand it
+yourself using `PageIndex.blocks`.
+
+## Markdown flattening
+
+Uses **mdast**, not regex:
+
+- Every node carries `position.offset`, which is precisely the index mapping we need
+- "What is visible after rendering" is decided by the parser, not guessed
+- Tables, strikethrough, footnotes and escapes — all things regex gets wrong — come free
+
+Deliberate, slightly counter-intuitive choices:
+
+- **Image alt text is dropped** — it renders as `<img>`, so users cannot copy the text
+- Links keep only their anchor text; URLs are discarded
+- Front matter, leftover HTML, comments, table `|`, heading `#` are all discarded
+- Image-only blocks do not count as blocks (they carry no text) and are skipped when
+  checking cross-block adjacency
+
+> **GFM requires both packages** — they are not alternatives but layered partners:
+>
+> | Package | Layer | Responsibility |
+> |---|---|---|
+> | `micromark-extension-gfm` | syntax / tokenization | turns `\| a \| b \|` into tokens |
+> | `mdast-util-gfm` | AST | turns tokens into `table` / `tableRow` nodes |
+>
+> `fromMarkdown` has two distinct slots — `extensions:` (syntax side) and
+> `mdastExtensions:` (AST side) — and both must be filled. With only
+> `mdast-util-gfm`, the tokenizer never recognizes table syntax and no `table` node
+> is ever produced.
+>
+> Both packages belong to the unified collective, share the same version line (`^3`),
+> and **neither is deprecated** (`micromark-extension-gfm@3.0.0` shipped 2025-03).
+> `remark-gfm@4.0.1` itself depends on both.
+>
+> `remark-gfm` is not used because it runs a unified pipeline, whereas we need the
+> `position.offset` that `mdast-util-from-markdown` provides directly — the source of
+> our exact coordinates.
+
+If mdast cannot be installed, the dependency-free `regexFlattener` works, but tables,
+nesting and escapes are handled imprecisely and coordinates are approximate —
+not the recommended path.
+
+## Cross-block excerpts
+
+Users copying across paragraphs often **lose the line break**:
+
+```
+md   : 第一段末尾内容。\n\n第二段开头内容。
+copy : 第一段末尾内容。第二段开头内容。
+```
+
+Block separators are a typographic artifact we insert, not content. So in addition to
+the strict view, a **separator-free view** is derived, and both participate in matching.
+
+### Adjacent blocks only — never skipping
+
+- A hit must land on a **contiguous run** of blocks. An excerpt that skips a whole
+  paragraph (`甲 / middle paragraph / 乙`) is `none` — that is the ellipsis case (T2),
+  not a cross-block one.
+- Adjacency is computed over **blocks that carry text**: image blocks and thematic
+  breaks produce no text and do not count as skipped.
+- `maxCrossBlocks` caps how many blocks a hit may span:
+
+| Value | Meaning |
+|---|---|
+| `Infinity` (default) | enforce contiguity only; no segment-count limit (three consecutive paragraphs are still adjacent) |
+| `2` | at most two adjacent segments |
+| `1` or `allowCrossBlock: false` | no cross-block matching at all |
+
+### Earliest wins, not strongest
+
+Candidates from both views are compared with **position before strength**:
+
+```
+甲\n\n乙\n\n后面段落里字面出现了甲乙两字。
+excerpt "甲乙" → matches the earlier 甲\n\n乙 (index 0),
+                 not the later literal "甲乙" (index 16)
+```
+
+Otherwise a T0 exact match later in the document would short-circuit and bury a
+cross-block match that appears earlier. Ties break by strength:
+`exact` > `normalized` > `segmented`.
+
+### Custom ellipsis patterns (T2)
+
+Common forms (`...`, `。。。`, `…`, `〔略〕`, `[...]`) work by default. Fully
+customizable, multiple patterns supported:
+
+```ts
+import { DEFAULT_ELLIPSIS } from './src';
+
+// Replace the defaults
+locateExcerpt(ex, page, { ellipsis: ['〔中略〕', /\[\s*snip\s*\]/] });
+
+// Keep defaults and append
+locateExcerpt(ex, page, { ellipsis: [...DEFAULT_ELLIPSIS, '〔中略〕'] });
+
+// Disable T2
+locateExcerpt(ex, page, { ellipsis: [] });
+```
+
+Strings match as **literals** (escaped internally, so `'...'` is not treated as a
+regex); regexes are used as-is. Whitespace around each pattern is ignored.
+
+> ⚠️ **Counter-intuitive**: splitting happens *after* normalization, and normalization
+> applies NFKC folding (`〔中略〕` → `[中略]`, `，` → `,`). String patterns are therefore
+> normalized with the same rules before matching — either full-width or half-width
+> works. Regexes operate on normalized text, so write them against the folded form.
+
+### Risk
+
+Short excerpts can be ambiguous across blocks: in `甲\n\n乙\n\n甲\n\n乙`, "甲乙" can be
+assembled in three places. The implementation guarantees the **first** one is returned,
+and `occurrences` reports the total so callers can detect ambiguity.
+
+## Semantic equivalence vs contradiction
+
+This is the easiest trap in the whole library. Measured:
+
+```
+page   : 前缀人工智能正在改变世界后缀
+excerpt A : 人工智能在改变世界     0.947  ← equivalent, accept
+excerpt B : 人工智能没在改变世界   0.900  ← opposite, reject
+```
+
+**They differ by only 0.047.** Character similarity cannot tell "one particle missing"
+from "one negation added" — literal overlap is high in both cases. No threshold tuning
+fixes this; it is the difference between **similarity** and **entailment (NLI)**: cosine /
+character distance measures "how alike", while what we need is "do they mean the same".
+
+The fix is not a model — it is one deterministic check first: **look for negations**.
+
+```
+checkPolarity: true (default)
+  人工智能在改变世界    → fuzzy 0.947  ✅
+  人工智能没在改变世界  → none         ✅
+```
+
+`detectPolarity` uses Chinese + English negation word lists (longest match first, so
+`没有` is not split into two single-character marks) and decides polarity by the
+**parity of negation marks** — double negation (`不得不`) counts as affirmative.
+
+Three details:
+
+- **Compare only the text inside the hit span**, not the whole page. A "not" elsewhere
+  in the document is normal and must not affect the verdict.
+- **Compare parity, not wording.** `不去` and `没去` use different words but are both
+  negative, so they do not conflict.
+- **Applies to T3 / T4 only.** T0–T2 are literal matches, so polarity is consistent by
+  construction (if the page really is negative, the excerpt carries the same negation).
+
+The test is that **the negation must be a standalone word**, guaranteed by
+`Intl.Segmenter` tokenization:
+
+```
+非常 → segmented as ["非常"] (one word)     → not a negation  ✅
+无锡 → ["无锡"]                            → not a negation  ✅
+没有 → ["没有"]                            → negation        ✅
+不去 → ["不去"] (segmenters disagree here, so a word that
+      starts with a one-char negation and is ≤2 chars counts) → negation ✅
+```
+
+English contractions are matched by **word form** (`don't` as a word, or ending in
+`n't`), so `don't` / `doesn't` / `isn't` are detected while `notice` / `noon` are not.
+
+The exclusion list matches **whole words**, not prefixes — a prefix rule would
+wrongly discard `无法` ("cannot") and `无论` ("no matter"), which are real negations.
+
+The guard runs at **candidate filtering**, not after the hit — otherwise the best-scoring
+candidate could be rejected on polarity grounds while a perfectly legal runner-up existed.
+
+> Known limitation: negation **scope** is not modeled. `他没有说不去` is counted as a
+> double negation, which is not what it means. Such structures are rare, and the guard's
+> behavior stays predictable (conservative rejection).
+
+## Chinese particles 的 / 地 / 得: POS matters
+
+### Blind folding is wrong
+
+Confusing these three is common *when they act as particles*, but they must never be
+folded *when they are part of a content word* (大地 / 土地 / 得到 / 值得).
+**`大地` and `大的` are two different words**, not two spellings of one word — a
+fundamental difference from full-width/half-width folding.
+
+An earlier version folded them blindly. Measured false positives:
+
+```
+「辽阔的大地」 ← 「辽阔的大的」     normalized  score 1.00  ← wrong
+「这片土地」   ← 「这片土的」       normalized  score 1.00  ← wrong
+「值得信赖」   ← 「值的信赖」       normalized  score 1.00  ← wrong
+```
+
+Worse, `score = 1.00` asserts "these two texts are identical", which they are not.
+Fatal for citation verification / forensics.
+
+### Use jieba POS tagging
+
+jieba tags them as distinct particles: `uj` = 的, `uv` = 地, `ud` = 得.
+**The key insight: they are separate tokens only when acting as particles.**
+
+```
+他高兴地接受了 → 他/r 高兴/b 地/uv 接受/v   ← standalone particle, foldable
+这片土地       → 这片/x 土地/n              ← no standalone particle, not foldable
+他得到了批准   → 得到/v                     ← no standalone particle, not foldable
+```
+
+The tokenizer naturally solves "content words containing 的/地/得" — those characters
+are never standalone tokens.
+
+```ts
+import * as jieba from '@isdk/nlp-jieba';
+
+const tagger = createJiebaParticleTagger(jieba);
+locateExcerpt(ex, page, { markdown: md, ignoreParticles: tagger });
+```
+
+Measured: **6/6 particle confusions matched, 11/11 content-word misuses rejected**.
+
+> ⚠️ **You must call `addDefaultDict()` first**, otherwise every tag is `x` and the
+> check silently does nothing. `createJiebaParticleTagger` calls it once for you.
+
+### Three strategies
+
+| Value | Meaning | Dependency |
+|---|---|---|
+| `false` (**default**) | no folding. Safest, zero false positives | none |
+| `true` | conservative mode: content-word guard list. Dependency-free but incomplete | none |
+| `ParticleTagger` | POS-aware. **Recommended** | WASM |
+
+The default is `false` because **a false positive costs more than a miss**: a miss is
+just one fewer hit, a false positive fabricates a citation.
+
+That guard list is bottomless —
+`大地 / 土地 / 地方 / 地址 / 得到 / 懂得 / 值得 / 获得 / 记得 / 觉得 / 显得 / 使得 /
+目的地 / 根据地 / 殖民地 / 心地 / 见地 / 境地…` can never be fully enumerated by hand.
+Use jieba if you can.
+
+The fold is 1→1, so length never changes and index mapping is unaffected.
+
+### Bundling caveat
+
+The Node build of `@isdk/nlp-jieba` loads its binary at runtime via
+`fs.readFileSync(__dirname + '/jieba_bg.wasm')` — **.wasm is a resource file, not a
+module, so esbuild cannot inline it**. Bundling it produces `ENOENT: jieba_bg.wasm`.
+
+It must therefore stay external (already configured in this project's `tsup.config.ts`):
+
+```ts
+external: ['@isdk/nlp-jieba']
+```
+
+**`esbuild-plugin-wasm` does not fix this** — it handles `import wasm from './x.wasm'`
+ESM import statements, has no effect on `readFileSync`, and only supports the esm
+output format (it relies on top-level await).
+
+### Performance
+
+`addDefaultDict()` costs about 49 ms (once); tokenization is roughly 1.5 µs per
+character (6,000 chars ≈ 9 ms). With `createPageIndex` caching you pay it once when
+building the index. Very long text (default > 200,000 chars) skips the check and falls
+back to no folding.
+
+## Normalization is a staged pipeline — **order is part of the design**
+
+```
+1. foldWidth         NFKC folding + strip zero-width characters
+2. normalizeNumbers  numeric notation   ← position matters, see below
+3. foldCase          case folding
+4. foldPunctAndSpace punctuation folding / particle folding / whitespace → sentinel /
+                     cross-script space removal
+```
+
+### Number normalization must run *after NFKC, before punctuation folding*
+
+In `1,000` the comma is a pure typographic grouping mark; in `1、000` the ideographic
+comma is a list separator. By stage 4 both have been folded to `,`, and **they can no
+longer be told apart**.
+
+But it also **cannot run before NFKC** — Chinese documents mostly use the full-width
+`1，000`, which only becomes `,` after NFKC.
+
+```
+1,000  (half-width)  NFKC → 1,000   → matched as grouping   ✅
+1，000 (full-width)  NFKC → 1,000   → matched as grouping   ✅  ← the common form
+1、000 (ideographic) NFKC → 1、000  → not matched           ✅
+```
+
+This continues the "fold, don't replace" principle: **let an earlier general-purpose
+fold collapse the variants, so later rules only need to recognize one form** — no
+enumeration (which is never complete).
+
+### Numeric notation
+
+| Form | Default | Reason |
+|---|---|---|
+| `1,000` ≡ `1000` | **on** | the separator carries no information |
+| `1，000` (full-width) | **on** | same, collapsed by NFKC first |
+| `1_000` | off | `_` is usually part of an identifier |
+| `一千` ≡ `1000` | off | **a different numeral system**; also `三思而行` is not numeric |
+
+Grouping uses a strict pattern (`separator + exactly 3 digits + no digit after`), so
+`1,0000`, `12,34` and `第1,2条` are never mis-handled.
+
+### Chinese numerals: use `cjk-number`, do not hand-roll
+
+This part **used to be 177 lines of hand-written parser — measured, that was a
+mistake**. After switching to `cjk-number`:
+
+| Input | Hand-rolled | `cjk-number` |
+|---|---|---|
+| `两万` | ❌ | ✅ 20000 |
+| `負一百零二` | ❌ | ✅ -102 |
+| `一點二三` | ❌ | ✅ 1.23 |
+| `一万二千三百四十五` | ❌ | ✅ 12345 |
+| `二〇二三` / `壹仟` | ✅ | ✅ |
+
+**16/16** on pure numeral parsing, covering colloquial 「两」, years, negatives,
+decimals, and chained carries.
+
+```ts
+import * as cjk from 'cjk-number';
+locateExcerpt(ex, page, {
+  cjkNumerals: true,
+  cjkNumeralParser: createCjkNumberParser(cjk),  // inject the backend
+});
+```
+
+> **`cjk-number` is ESM-only** (no CJS main; `require` fails), so it can only be an
+> **optional peer** injected by the caller — this library's CJS output cannot reference it.
+
+**Honest note**: switching libraries fixes **pure numeral parsing**, but the ambiguity
+"is this Han character a numeral *here*" remains. Calling
+`number.parse('三思而行')` on the whole string does throw, which looks like a
+"not a numeral" signal; but the adapter must try **shorter spans** to obtain
+`consumed` (needed for coordinate mapping), so 「三」 is parsed alone again and the
+result is still `3思而行`, exactly as before.
+
+That is an **inherent ambiguity of the language**, not an implementation defect —
+which is why `cjkNumerals` still defaults to off.
+
+## Import only what you need: subpath exports
+
+If you only need part of the functionality, you do not have to pull in the whole
+matcher. Four subpaths are **standalone entry points**:
+
+| Subpath | Provides | External deps |
+|---|---|---|
+| `excerpt-match/number` | Chinese numerals, digit grouping | **none** |
+| `excerpt-match/text` | graphemes, script classes, normalization | none |
+| `excerpt-match/linguistics` | negation, 的/地/得, language profiles | none |
+| `excerpt-match/markdown` | markdown flattening (rendered ↔ source coords) | mdast |
+
+```ts
+import { parseChineseNumeral } from 'excerpt-match/number';
+parseChineseNumeral('一百二十三', 0); // { value: 123, consumed: 5 }
+
+import { detectNegation } from 'excerpt-match/linguistics';
+detectNegation('他没来').negated; // true
+detectNegation('非常').negated;   // false (solid word, not a negation)
+
+import { createMdastFlattener } from 'excerpt-match/markdown';
+const flat = createMdastFlattener(fromMarkdown).flatten(mdSource);
+flat.text;    // visible text after rendering
+flat.map[10]; // offset of the 10th character in the markdown source
+```
+
+Each sub-entry is tiny (200–800 bytes plus a shared chunk), and
+`number` / `text` / `linguistics` have no external dependencies at all.
+
+> For module layering, the dependency graph, and coordinate systems, see
+> **[ARCHITECTURE.en.md](./ARCHITECTURE.en.md)**.
+
+## Prefer existing libraries; only write code when none exists
+
+The boundary is explicit: **if the standard library or a mature package can do it, we
+do not implement it**. What remains hand-written is only two things — no library
+provides "normalize and still map back to source coordinates", and the orchestration
+between tiers (which is business semantics, not algorithms).
+
+| Need | Library | Notes |
+|---|---|---|
+| Grapheme segmentation | `Intl.Segmenter` (grapheme) | built-in, UAX #29 |
+| Word segmentation | `Intl.Segmenter` (word) | built-in, uses ICU |
+| Chinese POS / particles | `@isdk/nlp-jieba` | optional, WASM |
+| Fuzzy location | `diff-match-patch-es` | Bitap |
+| Markdown parsing | `mdast-util-*` | carries `position.offset` |
+| Segmenter cache | `secondary-cache` | two-level: fixed + LRU |
+
+### Segmenter cache: why two levels (`secondary-cache`)
+
+`locale` comes from **user input**. With an unbounded `Map`, long-running servers
+accumulate locale variants (`zh-CN` / `zh-Hans-CN` / `zh-Hans-CN-u-co-pinyin` …) —
+a memory-leak vector.
+
+But a plain LRU has a cost too: hot built-in locales can be evicted by a flood of
+obscure ones, forcing repeated `Intl.Segmenter` reconstruction (not cheap).
+
+Two levels map exactly onto the two kinds of keys:
+
+| Level | Holds | Evicted |
+|---|---|---|
+| **fixed** | built-in language locales (`zh` / `en` / `ja` / `ko` / `th`…) | **never** |
+| LRU | any locale passed by the caller | yes, beyond capacity |
+
+Measured: after inserting 100 user locales, all 5 built-in locales survive.
+
+It must also be fault-tolerant: `new Intl.Segmenter('xx-locale-0')` throws
+`RangeError: Incorrect locale information provided`. An invalid locale falls back to
+the default segmenter and is cached anyway (so it is not reconstructed each time) —
+this was found while writing the unit tests.
+
+### Graphemes: why this must go to `Intl.Segmenter`
+
+Hand-written "step back to the base character" logic handles surrogate pairs and
+combining marks, and nothing else. These all fail, and the rules evolve with each
+Unicode release:
+
+```
+👨‍👩‍👧‍👦  ZWJ family        1 cluster (naive code splits into 4 people + ZWJ)
+🇨🇳      regional indicator 1 cluster (naive code splits it in half)
+👍🏽      skin tone modifier 1 cluster (naive code strips the modifier)
+```
+
+## Identifier spelling: **split, never join**
+
+`HelloWorld` / `hello_world` / `hello-world` / `hello world` should be one identifier.
+The direction matters:
+
+```
+join   Hello World → HelloWorld   ordinary word pairs get merged too  ❌
+split  HelloWorld  → Hello World  inserts only where a space is missing  ✅
+```
+
+**Why splitting is safer** — there is a key asymmetry:
+
+```
+Two adjacent words with no space never occur in natural text (`thecourt` is not English)
+  → "no space + camel hump" is a strong identifier signal
+But "space + camel hump" is everywhere in titles and names (Hello World)
+  → deleting the space on that basis is bound to cause false merges
+```
+
+And `thecourt` is lowercase-then-lowercase, so the split rule never fires at all.
+
+```ts
+{ splitCamelCase: true, normalizeIdentifierSeparators: true }
+```
+
+Both default to `false`.
+
+**Only inside identifier context** (both sides `[A-Za-z0-9]`):
+
+```
+北京-上海  ←  北京上海    ❌ rejected  (Han on both sides: never split,
+                                      otherwise two place names merge into one)
+第3-5条    ←  第35条      ❌ rejected  (same for numeric ranges)
+```
+
+Known limitation: `McDonald` → `Mc Donald` and `iPhone` → `i Phone` are over-split.
+But since page and excerpt go through the same transform, **the same word still
+matches**; a false positive requires two *different* sources collapsing to one string.
+
+## `punctFolded`: separating "strict hit" from "hit only by ignoring punctuation"
+
+With `ignorePunctuation` enabled, excerpts that differ literally can still match. But
+callers usually **only dare to cite strict hits** and want the rest reviewed by a
+human — so the two need to be distinguishable.
+
+```ts
+const r = locateExcerpt(ex, page, { markdown: md, ignorePunctuation: true });
+if (r.kind === 'exact' || (r.kind === 'normalized' && !r.punctFolded)) {
+  cite(r);               // cite directly only on a strict hit
+} else if (isHit(r)) {
+  flagForHumanReview(r); // crossed a punctuation difference → human review
+}
+```
+
+The meaning is "**crossed a difference**", not "folded punctuation" — the latter
+would flag every hit to `true` once the option is on, leaving callers nothing to
+distinguish:
+
+| Page | Excerpt | `punctFolded` |
+|---|---|---|
+| `本院认为，被告…。` | `本院认为，被告…。` | `false` — punctuation identical, `exact` matches already |
+| `本院认为，被告…。` | `本院认为。被告…，` | `true` — comma and full stop swapped |
+| `本院认为，被告…。` | `本院认为被告…` | `true` — excerpt has no punctuation at all |
+
+**Width differences do not count**: half-width/full-width and CJK-vs-ASCII punctuation
+are handled by `ignoreWidth`, i.e. ordinary T1 normalization, and need no review
+(`本院认为,被告…` ↔ `本院认为，被告…` is `false`).
+
+It is decided by re-normalizing both the matched span and the excerpt with
+`ignorePunctuation: false` and comparing; a difference means the match only worked
+because punctuation was ignored. In markdown mode the comparison uses the
+**flattened** text, so syntax markers like `**` and `[](url)` never count as a
+difference.
+
+`exact` is always `false` (literally identical, so no difference can be crossed).
+
+## Polysemy: why the default is conservative, and where the real risk is
+
+Take `未来` — it is either the noun "future" (`他来自未来`) or a colloquial
+ellipsis for "has not come" (`他未来`).
+
+### First: polysemy itself is not a risk here
+
+Page and excerpt go through **the same transform**, so `未来` stays `未来` on both
+sides. The contract is **location**, not **interpretation**: the same string should
+point at the same place.
+
+The real risk is **different sources collapsing into one string**:
+
+```
+一一列举  →  11列举   ┐
+十一列举  →  11列举   ┘ different meanings, one string ← the actual source of false hits
+```
+
+Polysemy does not do that. This is why `cjkNumerals` defaults to off, and why
+polysemy needs no handling in the normalization layer.
+
+### When it cannot be disambiguated, choose conservative
+
+`未来` as a time noun is far more frequent than the "has not come" ellipsis:
+
+| Choice | `他来自未来` vs `他来自过去` | `他来到了` vs `他未来` |
+|---|---|---|
+| **conservative (default)** | not rejected ✅ | not rejected ❌ false negative |
+| aggressive | **wrongly rejected** ❌ | rejected ✅ |
+
+**Wrong rejection costs more**: a false negative merely loses a guard, a wrong
+rejection makes a legitimate excerpt unlocatable. So such words default to
+**not negated**.
+
+### Override per domain
+
+Which sense applies depends on context — that is word-sense disambiguation (WSD),
+outside this library's scope. The approach is **conservative default plus an
+override hook**, not pretending it can be decided automatically:
+
+```ts
+locateExcerpt(ex, page, {
+  negationLexicon: {
+    negations: ['未来'],        // transcripts: treat 「未来」 as negation too
+    nonNegations: ['无限制'],   // product names / terms: never a negation
+  },
+});
+```
+
+`nonNegations` wins over everything and can lift built-in whitelist protection —
+otherwise a built-in non-negation like `未来` could never be overridden.
+
+### Implementation: why "sequential scan inside Han spans"
+
+Negation detection hit three traps, each corresponding to an implementation choice:
+
+| Approach | Problem |
+|---|---|
+| match whole segmented tokens | `无限制套餐` segments as `["无","限制","套餐"]`, so the 「无限制」 guard never fires |
+| global longest match | `不得不` (double negation → affirmative) yields only one 「不」 |
+| **sequential scan inside Han spans** | ✅ merge adjacent Han tokens, whitelist first, then longest negation match |
+
+## Mixed-script whitespace: delete only when safe
+
+When Chinese or Japanese text embeds English words, should the space matter?
+**Test: does removing it create boundary ambiguity?**
+
+This is measurable — compare tokenization of the original against the same text with
+all spaces removed:
+
+```
+Han    本院认为...  → 本院|认为|被告|违约     identical ✅ space is not meaningful
+Kana   機械学習...  → 機械|学習|の|応用       identical ✅ space is not meaningful
+Hangul 아버지가 방에 → 아버지가|방에|들어가신다
+       아버지가방에 → 아버지가방에들어가신다  ★differs ❌ meaningful
+Thai   สัญญาผิด...  → สัญญา|ผิด|เงื่อนไข      identical (word level)
+Latin  The court   → The|court|held
+       Thecourt    → Thecourtheld            ★differs ❌ meaningful
+```
+
+### Three roles
+
+| Role | Meaning | Scripts | Effect of deleting |
+|---|---|---|---|
+| `ignorable` | pure typographic artifact | Han, Kana | none |
+| `wordDelimiter` | separates words | Hangul, Latin, digits | **word-boundary ambiguity** |
+| `boundary` | sentence/phrase boundary (≈ punctuation) | Thai | **sentence boundary lost** |
+
+### Hangul and Thai: same verdict, different reasons
+
+**Hangul** — particles attach to the preceding word, so deleting spaces makes
+attachment ambiguous (a standard Korean orthography example):
+
+```
+아버지가 방에 들어가신다  = father enters the room
+아버지 가방에 들어가신다  = (someone) gets into father's bag
+        ↓ identical once spaces are removed
+```
+
+**Thai** — words are written together; spaces separate **sentences/phrases**. Words can
+still be segmented after removal, but the sentence boundary disappears —
+**equivalent to deleting the full stop in English**. That also changes meaning, so it is
+also preserved.
+
+### Cross-script boundaries are always droppable
+
+Whitespace between scripts is typographic, unlike whitespace within a script:
+
+```
+使用 TensorFlow 框架  ≡  使用TensorFlow框架  ✅
+共 100 人参加         ≡  共100人参加         ✅
+สัญญา TensorFlow     ≡  สัญญาTensorFlow     ✅
+```
+
+But spaces **within** one script follow the table above and are never dropped:
+
+```
+使用 TensorFlow 框架  ←  使用 Tensor Flow 框架  ❌ rejected
+共 1 000 人           ←  共 1000 人             ❌ rejected
+```
+
+Digits get their own class (`wordDelimiter`): droppable across scripts (`共 100`),
+preserved between digits (`1 000 ≠ 1000`).
+
+## Language
+
+Language policy lives in `profiles.ts`; the core algorithm stays language-agnostic.
+Language affects only:
+
+1. Whether whitespace between CJK characters is dropped (Chinese layout does not insert
+   spaces at line breaks; English must keep them)
+2. Whether T3 / T4 tokenize by character or by word
+3. Which locale initializes `Intl.Segmenter`
+
+```ts
+profileFor('zh').granularity;  // 'char'
+profileFor('en').granularity;  // 'word'
+detectProfile('本院认为被告构成根本违约').id; // 'cjk'
+```
+
+- **Chinese uses character level**: for short excerpts (a dozen characters), word-level
+  fuzzy matching is less stable than character level.
+- **English must use word level**: character-level 4-gram seeds appear everywhere and
+  localization degrades.
+- Tokenization uses the built-in `Intl.Segmenter` (ICU dictionaries) — no native
+  modules such as nodejieba.
+
+## T3 / T4: plugging in external capability
+
+### T3 fuzzy matching
+
+`diff-match-patch-es` is recommended:
+
+```ts
+import * as dmpEs from 'diff-match-patch-es';
+const fuzzy = createDmpEsFallback(dmpEs);
+locateExcerpt(ex, page, { markdown: md, fallbacks: [fuzzy] });
+```
+
+Existing code can keep using `createDmpFallback(new diff_match_patch())`, but that
+package has not been published since 2020-05 and is marked `@deprecated`.
+
+#### Why not jsdiff / @lowlighter/diff
+
+The deciding factor is not "who is active" but **who has Bitap**. What we need is not
+"diff two strings" but "fuzzy-locate an excerpt inside a 600 KB page" — that is dmp's
+`match_main`, and jsdiff has no equivalent (it only offers full comparisons such as
+`diffChars`). Using jsdiff would mean writing the entire seed-and-extend location step
+ourselves.
+
+| Candidate | Maintained | Fuzzy location | Verdict |
+|---|---|---|---|
+| `diff-match-patch-es` | ✅ active | ✅ | **recommended** |
+| `diff-match-patch` | ❌ stale since 2020 | ✅ | kept for compatibility |
+| `diff` (jsdiff) | ✅ active | ❌ | wrong capability |
+| `@lowlighter/diff` | ⚠️ 3 downloads/week | ❌ | ruled out |
+
+> Two caveats:
+> 1. `diff-match-patch-es` is **pure ESM** (`exports` exposes only `.mjs`).
+>    Verify `require` works if your pipeline has a CJS stage.
+> 2. It is more sensitive to `matchThreshold` than the original — the same excerpt
+>    returns -1 at 0.4 but matches at 0.5. So the adapter passes **no** options by
+>    default and relies on the library default.
+
+All three adapters share `createBitapFallback(match, diff)`; swapping backends only
+requires two functions.
+
+### T4 semantic recall
+
+**External recall + in-segment realignment**, never asking the model for character offsets:
+
+1. Offsets returned by LLMs / embeddings drift badly in long documents — tokens ≠ characters
+2. Recall only needs to answer "roughly this paragraph"; precise localization is a
+   deterministic problem
+3. The retriever can be swapped freely without touching coordinate logic
+
+```ts
+const r = await locateSemantic(idx, '合同可以通过要约与承诺来订立', retriever, {
+  aligner: fuzzy,
+  minRecallScore: 0.5,
+  minAlignScore: 0.5,
+});
+```
+
+Without `aligner` it degrades to highlighting the whole segment at a reduced score
+(`via: 'semantic:segment'`).
+
+### Custom fallback
+
+```ts
+const myFallback: FallbackMatcher = {
+  name: 'my-model',
+  kind: 'semantic',
+  find(needle, hay, ctx) {
+    // return [{ start, end, score }] in normalized space
+  },
+};
+```
+
+The contract only goes as far as `[start, end)` in normalized space; the locator handles
+mapping back to source — so swapping in any library never touches coordinate logic.
+
+## Performance
+
+Page normalization (including markdown flattening) is O(n) and heavy. Calling
+`locateExcerpt` per excerpt repeats the full-page work every time.
+
+```ts
+const idx = createPageIndex(page, { markdown: md }); // normalize once
+for (const it of items) idx.locate(it.excerpt);      // then just match
+```
+
+Measured:
+
+| Scenario | One-shot | Reusing index |
+|---|---|---|
+| 600 KB plain-text page | ~200 ms | ~7 ms |
+| 12 KB markdown | ~60 ms | ~4 ms |
+
+## Module layout
+
+```
+src/types.ts      shared return contract + pluggable interfaces
+src/normalize.ts  normalization + source index mapping (the only "magic"; no library does this)
+src/profiles.ts   language policy: whitespace handling, tokenization granularity
+src/markdown.ts   md source → visible text + exact source mapping
+src/locator.ts    T0/T1/T2 deterministic tiers + fallback orchestration + coordinate mapping
+src/adapters.ts   T3 diff-match-patch, T4 semantic recall
+```
+
+Only three things are written here; everything else delegates to existing libraries:
+
+1. Normalization + index mapping (no library offers "normalize and still map back")
+2. Mapping normalized space → source coordinates (no library knows our coordinate system)
+3. Tier orchestration and thresholds (business semantics)
+
+## Development
+
+```bash
+npm test          # vitest run, 39 tests
+npm run typecheck # tsc --noEmit
+npm run build     # tsup, emits ESM + CJS + .d.ts
+```
+
+Coverage includes: per-tier cases, coordinate round-trip property tests (random slices),
+cross-block adjacency and first-match ordering, escape/entity exactness,
+and normalization idempotence.

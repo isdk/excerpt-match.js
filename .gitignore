@@ -1,0 +1,19 @@
+node_modules/
+dist/
+*.tsbuildinfo
+
+# pnpm
+.pnpm-store/
+
+# 不要提交 npm 的锁文件（本项目用 pnpm）
+package-lock.json
+yarn.lock
+
+# 缓存
+.npm-cache/
+.npm/
+
+# 沙盒临时文件
+install-retry.sh
+probe_*.mjs
+dbg*.test.ts
