@@ -42,20 +42,22 @@ has no dedicated library — which is the reason `@isdk/approx-text-match` exist
 
 | Package | Responsibility | Deps | Status |
 |---|---|---|---|
-| `@isdk/whitespace-semantics` | script-aware whitespace: is a space typography or content | 无 | ✅ extracted |
-| `@isdk/identifier-variants` | identifier variant folding: `TensorFlow`/`tensor_flow`/`tensor-flow` → one form | 无 | ✅ extracted |
+| `@isdk/whitespace-semantics` | script-aware whitespace: is a space typography or content | none | ✅ extracted |
+| `@isdk/identifier-variants` | identifier variant folding: `TensorFlow`/`tensor_flow`/`tensor-flow` → one form | none | ✅ extracted |
+| `@isdk/zh-particles` | 的/地/得 part-of-speech decision | segmenter (injected) | ✅ extracted |
+| `@isdk/normalize-text` | normalization + coordinate mapping (incl. the `NormalizedText` type) | `whitespace-semantics`, `zh-particles`, `identifier-variants`, optional `cjk-number` | ✅ extracted |
+| `@isdk/md-flatten` | markdown source ↔ rendered text coordinates, both ways | `normalize-text`, optional mdast | ✅ extracted |
+| `@isdk/approx-text-match` | approximate substring localization: contiguous span + score | optional dmp-es | ✅ extracted |
+| `@isdk/semantic-locate` | two-stage localization: retrieve a segment, then align inside it | `@isdk/zh-negation` | ✅ extracted |
+| `@isdk/zh-negation` | word-boundary-aware Chinese negation detection | `Intl.Segmenter` | ✅ extracted |
+| `@isdk/excerpt-match` | **root package**: tiered locating and orchestration + unified coordinates | all of the above | ✅ moved into `packages/` |
 
-### To extract (hand-rolled here, generally useful)
+> The extraction list is **empty** — every candidate has been extracted.
 
-| Package | Responsibility | Tier | Deps | Value |
-|---|---|---|---|---|
-| `@isdk/normalize-text` | normalization + coordinate mapping (incl. the `NormalizedText` type) | T1 | `cjk-number` | **highest** — no library offers "point back to the source after transform" |
-| `@isdk/approx-text-match` | approximate substring localization: contiguous span + score | **T3** | 可选 dmp | **high** — see above, no mature library |
-| `@isdk/md-flatten` | markdown source ↔ rendered text coordinates, both ways | T0/T1 | mdast | **high** — needed for comment anchoring, document diff |
-| `@isdk/semantic-locate` | two-stage localization: retrieve a segment, then align inside it | **T4** | 注入 retriever | 中 —— 是"模式"而非算法 |
-| `@isdk/zh-negation` | word-boundary-aware Chinese negation detection | 守卫 | `Intl.Segmenter` | 中 —— 情感分析/法务可用 |
-| `@isdk/zh-particles` | 的/地/得 part-of-speech decision | T1 | 分词器（注入） | 中低 —— 强依赖分词器 |
-| `@isdk/number-notation` | digit grouping + Chinese numerals (wraps `cjk-number`) | T1 | `cjk-number` | 中低 —— 但**含位置敏感的顺序约束** |
+> Number notation (digit grouping + Chinese numerals) is **not** its own package:
+> it is **position-sensitive** in the pipeline (must run after NFKC, before
+> punctuation folding), so splitting it out makes it easy to place wrong.
+> It ships inside `@isdk/normalize-text`.
 
 ### Explicitly **not** hand-rolled
 
@@ -143,12 +145,23 @@ Changing one normalization rule day to day needs no cross-package release.
 
 ## 6. Current status
 
-- ✅ `packages/` 目录已建，两个包零依赖、可独立构建
-- ✅ 主包**已改为引用**子包（`src/unicodeScript.ts` 已删除），不是复制
-- ✅ 命名空间统一 `@isdk/`
-- ⚠️ `identifier-variants` 已暴露 `findIdentifierBreaks()` 供带坐标场景复用，
-  但主包流水线的阶段 2b 尚未改成调它 —— 判定逻辑已验证 10/10 一致，代码仍是两份
-- ⬜ `normalize-text` 尚未抽出（下一个目标）
+- ✅ All nine packages (root included) live under `packages/`, each with its own
+  `package.json` / `tsup` / `tsconfig` / `README.md` / `README.en.md` / tests,
+  buildable and `require`-able on its own
+- ✅ The root is **not published** (`private: true`); it only manages the workspace
+  and aggregates tests
+- ✅ The root package **references** the sub-packages (duplicated source files were
+  deleted), it does not copy them
+- ✅ Namespace unified under `@isdk/`
+- ✅ `NormalizedText` lives in `@isdk/normalize-text`
+- ✅ Pipeline stage 2b **calls** `findIdentifierBreaks()` from
+  `@isdk/identifier-variants`, removing "the same rule written twice"
+- ✅ The extraction list is empty
+- ✅ **The root package no longer resells sub-package contracts**: the
+  `number` / `text` / `linguistics` subpaths are gone and the root entry is
+  `src/index.ts` only. Normalization, markdown flattening, negation detection etc.
+  are imported from `@isdk/*` directly. The only re-exports left are the **types
+  that appear in the root package's own API signatures**
 
 
 ## 7. Directory convention
@@ -170,7 +183,12 @@ packages/normalize-text/
 
 Same in the root package: `src/locator.ts` ↔ `src/locator.test.ts`.
 Feature-level tests use `subject.feature.test.ts` (e.g. `locator.punctFolded.test.ts`);
-cross-module property tests live in `src/invariants.test.ts`.
+cross-module invariant tests live in `src/invariants.test.ts`.
+
+**Property tests** (`fast-check`) go in `subject.property.test.ts` and assert
+invariants over random input (random text × random options). Today
+`normalize-text/src/normalize.property.test.ts` is the one — that package's input
+space is effectively unbounded and hand-written cases cannot cover it.
 
 ## Extra note: T3
 

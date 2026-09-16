@@ -3,15 +3,9 @@ import { fromMarkdown } from 'mdast-util-from-markdown';
 import { gfm } from 'micromark-extension-gfm';
 import { gfmFromMarkdown } from 'mdast-util-gfm';
 import { diff_match_patch } from 'diff-match-patch';
-import {
-  locateExcerpt,
-  createTextIndex,
-  normalizeWithMap,
-  isHit,
-  createDmpFallback,
-  createMdastFlattener,
-  regexFlattener,
-} from './index';
+import { locateExcerpt, createTextIndex, isHit, createDmpFallback } from './index';
+import { normalizeWithMap } from '@isdk/normalize-text';
+import { createMdastFlattener, regexFlattener } from '@isdk/md-flatten';
 
 const md = createMdastFlattener(fromMarkdown, {
   extensions: [gfm()],

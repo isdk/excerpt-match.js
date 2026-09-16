@@ -48,11 +48,8 @@ npm install
 ```
 
 ```ts
-import {
-  locateExcerpt,
-  createPageIndex,
-  createMdastFlattener,
-} from './src';
+import { locateExcerpt } from './src';
+import { createMdastFlattener } from '@isdk/md-flatten';
 import { fromMarkdown } from 'mdast-util-from-markdown';
 import { gfm } from 'micromark-extension-gfm';
 import { gfmFromMarkdown } from 'mdast-util-gfm';
@@ -329,6 +326,7 @@ jieba 把三者标成不同助词：`uj` = 的、`uv` = 地、`ud` = 得。
 
 ```ts
 import * as jieba from '@isdk/nlp-jieba';
+import { createJiebaParticleTagger } from '@isdk/zh-particles';
 
 const tagger = createJiebaParticleTagger(jieba);
 locateExcerpt(ex, page, { markdown: md, ignoreParticles: tagger });
@@ -433,6 +431,7 @@ external: ['@isdk/nlp-jieba']
 
 ```ts
 import * as cjk from 'cjk-number';
+import { createCjkNumberParser } from '@isdk/normalize-text';
 locateExcerpt(ex, page, {
   cjkNumerals: true,
   cjkNumeralParser: createCjkNumberParser(cjk),  // 注入后端
@@ -449,33 +448,47 @@ locateExcerpt(ex, page, {
 
 这是**语言本身的固有歧义**，不是实现缺陷 —— 所以 `cjkNumerals` 默认仍是关闭的。
 
-## 按需引入：子路径导出
+## 只想用其中一部分能力？装对应的子包
 
-如果只需要其中某部分能力，不必引入整个匹配器。四个子路径都是**独立入口**：
+本包**只暴露自己的契约**（定位、预设、语言策略、T3/T4 适配）。
+底下的能力已经拆成独立子包，**各自发布、各自有 README** ——
+想单独用请直接装子包，不必引入整个匹配器：
 
-| 子路径 | 提供 | 依赖 |
-|---|---|---|
-| `excerpt-match/number` | 中文数字解析、千分位 | **无** |
-| `excerpt-match/text` | 字形簇、文字类别、归一化 | 无（除内部） |
-| `excerpt-match/linguistics` | 否定检测、的/地/得、语言策略 | 无（除内部） |
-| `excerpt-match/markdown` | md 摊平（渲染文本 ↔ 源码坐标） | mdast |
+| 能力 | 包 |
+|---|---|
+| 归一化 + 原文坐标映射 | `@isdk/normalize-text` |
+| md 源码 ↔ 渲染后文本坐标 | `@isdk/md-flatten` |
+| 近似区间定位（T3） | `@isdk/approx-text-match` |
+| 两阶段语义定位（T4） | `@isdk/semantic-locate` |
+| 脚本感知空白 | `@isdk/whitespace-semantics` |
+| 标识符变体归一 | `@isdk/identifier-variants` |
+| 中文否定检测 | `@isdk/zh-negation` |
+| 的/地/得 判定 | `@isdk/zh-particles` |
 
 ```ts
-import { parseChineseNumeral } from 'excerpt-match/number';
-parseChineseNumeral('一百二十三', 0); // { value: 123, consumed: 5 }
+import { normalizeWithMap, snapToGraphemeBoundary } from '@isdk/normalize-text';
+import { unicodeScriptOf, canDropSpaceBetween } from '@isdk/whitespace-semantics';
+import { detectNegation } from '@isdk/zh-negation';
+import { createJiebaParticleTagger } from '@isdk/zh-particles';
+import { createMdastFlattener } from '@isdk/md-flatten';
+import { splitSegments } from '@isdk/semantic-locate';
 
-import { detectNegation } from 'excerpt-match/linguistics';
+import { createCjkNumberParser } from '@isdk/normalize-text';
+import * as cjk from 'cjk-number';
+// 解析后端需注入（本库不自带中文数词解析，见上文「多义词」）
+createCjkNumberParser(cjk).parse('一百二十三', 0); // { value: '123', consumed: 5 }
+
 detectNegation('他没来').negated; // true
 detectNegation('非常').negated;   // false（实词，非否定）
 
-import { createMdastFlattener } from 'excerpt-match/markdown';
 const flat = createMdastFlattener(fromMarkdown).flatten(mdSource);
 flat.text;    // 渲染后可见文本
 flat.map[10]; // 第 10 个字符在 md 源码中的下标
 ```
 
-子入口体积都很小（各 200~800 字节 + 共享 chunk），
-`number` / `text` / `linguistics` 完全不依赖任何外部包。
+> 语言策略（`detectLanguageProfile` / `languageProfileFor` / `tokenize`）
+> 与 T3/T4 的适配工厂（`createBitapFallback` / `createDmpEsFallback` / `locateSemantic`）
+> 是**本包自己实现**的，仍从 `excerpt-match` 导入。
 
 > 完整模块分层、依赖图、坐标系说明见 **[ARCHITECTURE.md](./ARCHITECTURE.md)**。
 

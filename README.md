@@ -18,7 +18,7 @@ pnpm run build
 ```
 
 **测试组织**：`vitest.workspace.ts` 把 9 个包聚合成**一次运行**，
-最后给一行汇总（`Test Files 19 passed / Tests 253 passed`）。
+最后给一行汇总（`Test Files 25 passed / Tests 349 passed`）。
 也能单跑：`pnpm --filter @isdk/zh-negation test`。
 
 **没有用任何路径别名** —— pnpm workspace 已经把 `@isdk/*` 软链到

@@ -3,7 +3,7 @@ import { fromMarkdown } from 'mdast-util-from-markdown';
 import { gfm } from 'micromark-extension-gfm';
 import { gfmFromMarkdown } from 'mdast-util-gfm';
 import { locateExcerpt } from './index';
-import { createMdastFlattener } from './index';
+import { createMdastFlattener } from '@isdk/md-flatten';
 import { STRICT, DEFAULT_PRESET, LOOSE, withPreset } from './presets';
 
 const md = createMdastFlattener(fromMarkdown, {

@@ -17,8 +17,15 @@
  * 而搜索高亮、引用定位、文本 diff 恰恰都需要这个信息。
  *
  * 不变量（由属性测试覆盖）：
- * 1. `map` 单调不减
- * 2. `src.slice(map[i], mapEnd[i])` 归一化后 === `text[i]`
+ * 1. `map` 单调不减，且 `map.length === text.length + 1`（末尾哨兵）
+ * 2. **整段**可回切：`src.slice(map[0], mapEnd[len-1])` 归一化后 === `text`
+ *
+ * @remarks
+ * 注意不变量 2 说的是**整段**，不是"任意第 i 个字符"。
+ * NFKC 展开（`ﬁ` → `fi`）会让多个输出字符**共享**同一个源码区间，
+ * 此时单个字符回切会得到整个展开（保守行为：宁可多切，不可切漏）。
+ * 子区间只有在**对齐到展开边界**时才满足逐字符回切。
+ * 见 `normalize.property.test.ts` 的「已知例外」一节。
  */
 export interface NormalizedText {
   /** 归一化后的文本 */

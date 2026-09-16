@@ -139,20 +139,3 @@ export function createDmpEsFallback(
     { ...options, name: 'diff-match-patch-es' }
   );
 }
-
-/**
- * `diff_match_patch` 实例的最小结构类型。
- * 只声明用到的成员，避免强依赖它的类型定义（社区 `@types/diff-match-patch` 版本不一）。
- */
-export interface DiffMatchPatchLike {
-  Match_Threshold: number;
-  Match_Distance: number;
-  match_main(text: string, pattern: string, loc: number): number;
-  diff_main(a: string, b: string): Array<[number, string]>;
-}
-
-// #endregion
-
-// #region T4：语义召回（同义词 / 改写）
-
-/** 页面的一段，用于 T4 语义召回 */

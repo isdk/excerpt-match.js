@@ -105,11 +105,17 @@ L1 四个包**完全零依赖**，这是实际能独立复用的部分。
 关键不变量：
 
 ```
-src.slice(map[i], mapEnd[i])  归一化后  ===  text[i]
+src.slice(map[0], mapEnd[len-1])  归一化后  ===  text      ← 整段
 ```
 
 - `mapEnd` **不能**由 `map[i+1]` 推算 —— 转义 `\*`、实体 `&amp;` 让一个可见字符横跨多个源码字符
 - `back` 必须**跨阶段复合** —— 每个阶段只知道"指向本阶段输入"，直接写 `at` 会丢失前面阶段的长度变化
+- 索引口径是 **UTF-16 code unit**，但 `mapEnd` 按**字符**给 ——
+  代理对（Emoji、CJK 扩展 B）占 2 个 unit，写成 `i+1` 会切出半个代理项
+
+**"整段"不是保守说法。** NFKC 展开（`ﬁ` → `fi`）让多个输出字符共享同一个源码区间，
+所以"第 i 个字符恰好回切到它自己"**不成立** —— 单个字符会回切到整个展开。
+这是刻意的保守行为（宁可多切，不可切漏），已由属性测试钉死。
 
 ## 六、归一化流水线（`normalize.ts`）
 
@@ -137,6 +143,16 @@ import { createMdastFlattener } from '@isdk/md-flatten';   // 评论锚定
 import { detectNegation } from '@isdk/zh-negation';        // 情感分析
 import { createCachedFlattener } from '@isdk/md-flatten';  // 摊平缓存
 ```
+
+**主包不代售子包的契约。** 上面这些符号不在 `@isdk/excerpt-match` 的导出里 ——
+拆包的意义就是让它们能独立演进，主包再转售一遍只会把两者重新绑死
+（子包改一次，主包就得跟着发一次版）。
+
+主入口只保留两类东西：
+
+1. **本包自己实现的** API —— 定位、预设、语言策略、T3/T4 适配工厂
+2. 这些 API **签名上出现的类型** —— 否则调用方没法传参 / 读返回值
+   （如 `NormalizedText`、`MarkdownFlattener`、`BitapMatcher`、`SemanticRetriever`）
 
 判断标准：**只有"没人做过 + 有普适价值"的才值得独立**。
 中文数词、分词、Bitap、字形簇、md 解析都有现成库，一律用别人的。
@@ -262,11 +278,25 @@ id 键加了 `\u0000id:` 前缀，避免与全文键碰撞（某文档内容恰�
 得自己加起来才知道总数、才知道有没有全绿。workspace 模式把它们聚合成一次：
 
 ```
- Test Files  19 passed (19)
-      Tests  253 passed (253)
+ Test Files  25 passed (25)
+      Tests  349 passed (349)
 ```
 
 一眼就能看出总数与成败。
+
+### 属性测试（fast-check）
+
+归一化是全库唯一"有魔法"的地方，输入空间却近乎无限（转义、实体、零宽、
+全角、代理对、组合字符…），手写用例覆盖不到想不到的组合。
+所以 `@isdk/normalize-text` 里有 `normalize.property.test.ts`：
+随机文本 × 随机选项组合，断言幂等、`map` 单调、`map.length === text.length + 1`、
+整段可回切等不变量。
+
+**它是发现真 bug 的主力**：代理对（Emoji / CJK 扩展 B）相关的
+`mapEnd` 错别字就是它第一轮跑出来的，而不是靠人 Review。
+
+约定：新增归一化规则时，先问"这条规则破坏哪个不变量"，
+然后在属性测试里加一条断言。
 
 ### 各包自带 devDependencies
 

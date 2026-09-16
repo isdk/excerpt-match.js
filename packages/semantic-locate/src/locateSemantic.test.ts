@@ -193,3 +193,155 @@ describe('未命中', () => {
     expect(await locateSemantic('', 'abc', keywordRetriever)).toBeNull();
   });
 });
+
+/**
+ * topK 的语义：**前 K 名都要参与对齐**，而不是只试第一名。
+ *
+ * 召回只负责排序，第 1 名未必是能精确对齐的那一段 ——
+ * 所以必须让 topK 个候选依次尝试对齐，全败才退回整段。
+ */
+describe('★ topK：前 K 名依次尝试对齐', () => {
+  /**
+   * 三段文本，`splitSegments` 按句号切成 3 段。
+   *
+   * 两个约束：
+   * - 只有**段 1** 含「关键词」——段 0 必须不含，否则第一名就能对齐，测不出缺陷
+   * - **不能出现否定词**（如「没有」）——否则段会被极性守卫过滤掉，同样测不到目标
+   */
+  const PAGE3 = '第一段内容平平。第二段含有关键词。第三段同样平平。';
+
+  /** 排序固定为 段0 > 段1 > 段2 */
+  const rankByIndexDesc: SemanticRetriever = (_excerpt, segments) =>
+    segments.map((_s, index) => ({ index, score: 0.9 - index * 0.1 }));
+
+  /** 只在含「关键词」的段（段 1）内对齐成功 */
+  const alignOnlyInMiddle = (excerpt: string, seg: string) => {
+    const at = seg.indexOf(excerpt);
+    return at >= 0 ? { start: at, end: at + excerpt.length, score: 1 } : null;
+  };
+
+  it('★ 第一名对齐失败、第二名成功 → 必须用第二名（aligned）', async () => {
+    const hit = await locateSemantic(PAGE3, '关键词', rankByIndexDesc, {
+      aligner: alignOnlyInMiddle,
+      minRecallScore: 0.1,
+      topK: 3,
+    });
+    expect(hit).not.toBeNull();
+    // 段 0 不含「关键词」，对齐必失败；段 1 含 —— 必须继续尝试到段 1
+    expect(hit!.via).toBe('aligned');
+    expect(hit!.segmentIndex).toBe(1);
+    expect(hit!.recallRank).toBe(1);
+    expect(PAGE3.slice(hit!.start, hit!.end)).toBe('关键词');
+  });
+
+  it('★ 前三名全部对齐失败 → 才退回整段，且用第一名', async () => {
+    const neverAlign = () => null;
+    const hit = await locateSemantic(PAGE3, '关键词', rankByIndexDesc, {
+      aligner: neverAlign,
+      minRecallScore: 0.1,
+      topK: 3,
+    });
+    expect(hit!.via).toBe('segment');
+    expect(hit!.segmentIndex).toBe(0); // 退回的是排名最前的那段
+    expect(hit!.recallRank).toBe(0);
+  });
+
+  it('topK 之外的名次不参与对齐', async () => {
+    // 只有段 2 含「末段」；topK=1 时只试段 0，必然退回整段
+    const hit = await locateSemantic(PAGE3, '关键词', rankByIndexDesc, {
+      aligner: alignOnlyInMiddle,
+      minRecallScore: 0.1,
+      topK: 1,
+    });
+    expect(hit!.via).toBe('segment');
+    expect(hit!.segmentIndex).toBe(0);
+  });
+
+  it('★ 第一名就能对齐时不浪费后续候选', async () => {
+    // 让段 0 成为唯一含目标词的段
+    const page = '关键词在第一段。其它段落平平。';
+    const hit = await locateSemantic(page, '关键词', rankByIndexDesc, {
+      aligner: alignOnlyInMiddle,
+      minRecallScore: 0.1,
+      topK: 3,
+    });
+    expect(hit!.via).toBe('aligned');
+    expect(hit!.segmentIndex).toBe(0);
+    expect(hit!.recallRank).toBe(0);
+  });
+});
+
+/**
+ * 对齐器契约。
+ *
+ * 调用方（如 `@isdk/excerpt-match`）需要把段内偏移换算回**整页**坐标，
+ * 因此除了段落文本，还必须知道这一段在整页中的起始下标 —— 否则只能靠
+ * `indexOf` 反查，重复段落时会查错。
+ */
+describe('★ 对齐器契约：必须收到段落在整页中的起始下标', () => {
+  const PAGE3 = '第一段内容平平。第二段含有关键词。第三段同样平平。';
+  const anyRank: SemanticRetriever = (_e, segments) =>
+    segments.map((_s, index) => ({ index, score: 0.9 - index * 0.1 }));
+
+  it('★ 第三个参数就是该段在输入文本中的起始下标', async () => {
+    const seen: number[] = [];
+    await locateSemantic(PAGE3, '关键词', anyRank, {
+      minRecallScore: 0.1,
+      aligner: (_excerpt, segText, segStart) => {
+        seen.push(segStart);
+        // 用 segStart 反查整页，必须能取回同一段文本
+        expect(PAGE3.slice(segStart, segStart + segText.length)).toBe(segText);
+        return null;
+      },
+    });
+    expect(seen.length).toBeGreaterThan(0);
+    // 段 0 / 段 1 / 段 2 的起始下标
+    expect(seen[0]).toBe(0);
+    expect(seen).toContain(PAGE3.indexOf('第二段'));
+    expect(seen).toContain(PAGE3.indexOf('第三段'));
+  });
+
+  it('★ 重复段落也能区分（indexOf 反查做不到）', async () => {
+    // 两段文本完全相同 —— 靠内容定位必然查错，只能靠起始下标
+    const dup = '同样的一句话。同样的一句话。';
+    const starts: number[] = [];
+    await locateSemantic(dup, '同样', anyRank, {
+      minRecallScore: 0.1,
+      aligner: (_e, _seg, segStart) => {
+        starts.push(segStart);
+        return null;
+      },
+    });
+    expect(new Set(starts).size).toBe(starts.length); // 起始下标互不重复
+    expect(starts).toContain(0);
+    expect(starts).toContain(7);
+  });
+});
+
+/** 检索器上下文：locale / tokenize 必须真的传下去，否则这个参数形同虚设 */
+describe('★ 检索器上下文 ctx', () => {
+  const PAGE = '本院认为被告构成根本违约。应当承担赔偿责任。';
+
+  it('★ locale 传给检索器', async () => {
+    let seen: string | undefined;
+    const spy: SemanticRetriever = (excerpt, segments, ctx) => {
+      seen = ctx.locale;
+      return segments.map((_s, index) => ({ index, score: 1 - index * 0.1 }));
+    };
+    await locateSemantic(PAGE, '根本违约', spy, { minRecallScore: 0.1, locale: 'zh' });
+    expect(seen).toBe('zh');
+  });
+
+  it('★ tokenize 传给检索器（BM25 需要它）', async () => {
+    let tokens: string[] | undefined;
+    const spy: SemanticRetriever = (excerpt, _segments, ctx) => {
+      tokens = ctx.tokenize?.(excerpt);
+      return [{ index: 0, score: 1 }];
+    };
+    await locateSemantic(PAGE, '根本违约', spy, {
+      minRecallScore: 0.1,
+      tokenize: (t) => Array.from(t),
+    });
+    expect(tokens).toEqual(Array.from('根本违约'));
+  });
+});

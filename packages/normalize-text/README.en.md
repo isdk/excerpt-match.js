@@ -42,9 +42,30 @@ Numbers must be **2**: after NFKC (Chinese docs use fullwidth `1，000`,
 which is `，` not `,` before NFKC) and before punctuation folding
 (、 is not folded by NFKC, so only here can you tell `1,000` from `1、000`).
 
+### Invariants
+
+```
+src.slice(map[0], mapEnd[len-1])  re-normalized  ===  text      ← the WHOLE span
+```
+
+- idempotent: `normalize(normalize(x)) === normalize(x)`
+- `map` is non-decreasing, and `map.length === text.length + 1`
+  (a trailing sentinel keeps `map[len]` defined)
+
+Note this is about the **whole span**, not "any character *i*": NFKC expansion
+(`ﬁ` → `fi`) makes several output characters **share** one source interval, so a
+single character maps back to the whole expansion. This is deliberate and
+conservative — better to cut wide than to cut short.
+
+These invariants are guarded by **property tests** (`fast-check`: random text ×
+random options), not a handful of hand-written cases — that is how the surrogate-pair
+(emoji / CJK Ext-B) coordinate bug was found.
+
 Also:
 - `mapEnd` **cannot be derived from `map[i+1]`**: escapes (`\*`) and entities
   (`&amp;`) make one visible char span several source chars
+- indices are **UTF-16 code units**, but `mapEnd` is given per **character**:
+  surrogate pairs occupy 2 units, so `i+1` would cut one in half
 - `back` must **compose across stages**
 - Number notation is not a separate package: it is position-sensitive
 

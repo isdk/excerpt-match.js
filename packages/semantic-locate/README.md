@@ -35,10 +35,39 @@ npm i @isdk/semantic-locate
 import { locateSemantic } from '@isdk/semantic-locate';
 
 const hit = await locateSemantic(page, excerpt, myRetriever, {
-  aligner: (ex, seg) => approxFind.find(ex, seg)?.[0] ?? null,
+  aligner: (ex, seg, segStart) => approxFind.find(ex, seg)?.[0] ?? null,
   checkPolarity: true,
 });
 // → { start: 120, end: 158, score: 0.87, via: 'aligned', recallRank: 0 }
+```
+
+### `SegmentAligner` 的第三个参数
+
+```ts
+type SegmentAligner = (
+  excerpt: string,
+  segmentText: string,
+  segmentStart: number   // 该段在输入文本中的起始下标
+) => { start: number; end: number; score: number } | null;
+```
+
+**`segmentStart` 是给调用方做坐标换算用的**：本包返回段内偏移，
+调用方要换算成整页坐标就必须知道段起点。**不能靠 `indexOf` 反查** ——
+重复段落会查到第一个，坐标就错了。
+
+它是**追加**参数：只声明两个参数的旧实现依然可用（TS 允许实现形参更少）。
+
+### 检索器上下文
+
+`locale` 与 `tokenize` 会原样透传给检索器（BM25 / 多语模型需要）。
+本包**不探测语言** —— 探测是调用方的职责。
+
+```ts
+const hit = await locateSemantic(page, excerpt, myRetriever, {
+  locale: 'zh',
+  tokenize: (t) => Array.from(t),
+  aligner: myAligner,
+});
 ```
 
 ## 边界与取舍
@@ -47,6 +76,8 @@ const hit = await locateSemantic(page, excerpt, myRetriever, {
 - **不做段内对齐算法** —— 用 `@isdk/approx-text-match`
 - 没有 `aligner` 或对齐失败时**降级为整段并降分**（×0.9），不返回 null：
   给用户粗粒度位置比什么都不给有用
+- **`topK` 是真语义**：前 K 名**依次**尝试对齐，全败才降级到整段。
+  召回只负责排序，排第一的未必是能精确对齐的那段
 - `minRecallScore` 对 BM25 **无意义**（无上界），请改用 `topK` 截断
 
 ## 相关

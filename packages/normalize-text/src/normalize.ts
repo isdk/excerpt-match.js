@@ -13,8 +13,10 @@
 import type { NormalizedText } from './types';
 import type { ParticleTagger } from '@isdk/zh-particles';
 import { createGuardListParticleTagger } from '@isdk/zh-particles';
-import { GROUPED_DIGITS_PATTERN } from '@isdk/normalize-text';
-import type { ChineseNumeralParser } from '@isdk/normalize-text';
+// 同包内一律用相对路径 —— 通过自己的包名 import 会绕公开入口一圈，
+// 既让打包器的循环分析变复杂，也可能在发布后（exports 指向 dist）出问题
+import { GROUPED_DIGITS_PATTERN } from './numberNotation';
+import type { ChineseNumeralParser } from './numberNotation';
 import { canDropSpaceBetween, unicodeScriptOf } from '@isdk/whitespace-semantics';
 import { findIdentifierBreaks, type IdentifierBreak } from '@isdk/identifier-variants';
 export { snapToGraphemeBoundary } from '@isdk/normalize-text';
@@ -202,28 +204,6 @@ export interface NormalizeOptions {
  * 这是全库唯一必须自己实现的部分：没有任何现成库提供
  * 「归一化后还能回切原文坐标」的能力。
  *
- * **设计不变量**（由属性测试覆盖）：
- * 1. 幂等：`normalize(normalize(x)) === normalize(x)`
- * 2. 单调：`map` 单调不减
- * 3. 可回切：`src.slice(map[i], mapEnd[i])` 归一化后 === `text[i]`
- *
- * @param src 原文字符串，或已带映射的中间结果（链式处理时用后者）
- * @param options 归一化选项
- * @returns 归一化文本 + 下标映射，见 {@link NormalizedText}
- *
- * @example 链式：md 摊平 → 归一化，映射复合后仍指向 md 源码
- * ```ts
- * const flat = md.flatten(mdSource);
- * const hay = normalizeWithMap(flat, { ignoreCase: true });
- * mdSource.slice(hay.map[0], hay.mapEnd![0]); // → md 源码片段
- * ```
- */
-/**
- * 归一化文本，同时保留「归一化下标 → 原文下标」的映射。
- *
- * 这是全库唯一必须自己实现的部分：没有任何现成库提供
- * 「归一化后还能回切原文坐标」的能力。
- *
  * ## 分阶段流水线（**顺序是设计的一部分**）
  *
  * ```
@@ -288,7 +268,7 @@ function foldWidth(input: NormalizedText, options: NormalizeOptions): Normalized
   if (options.ignoreWidth === false) return input;
   const base = input.text;
   const baseMap = input.map;
-  const baseEnd = input.mapEnd ?? inferCharEndOffsets(baseMap, base.length);
+  const baseEnd = input.mapEnd ?? inferCharEndOffsets(baseMap, base);
   const out: string[] = [];
   const map: number[] = [];
   const mapEnd: number[] = [];
@@ -312,10 +292,16 @@ function foldWidth(input: NormalizedText, options: NormalizeOptions): Normalized
     }
     const folded = foldCodePointWithNfkc(cp);
     const k = Math.min(i, baseMap.length - 1);
-    for (const c of folded) {
-      out.push(c);
+    // 源码侧：整个字符（含低代理项）的结束位置 —— 不能用 baseEnd[k]，
+    // 那会落在代理对中间，切出半个代理项
+    const srcEnd = charEndOffset(baseEnd, i, w);
+    // ★ 按 **code unit** 展开（不是 `for...of` 的 code point）。
+    //   归一化下标的口径必须与 `String.prototype.indexOf` / `slice` 一致，
+    //   否则 `map.length !== text.length + 1`，下游取 `map[at]` 会拿到 undefined。
+    for (let u = 0; u < folded.length; u++) {
+      out.push(folded[u]);
       map.push(baseMap[k]);
-      mapEnd.push(baseEnd[k]);
+      mapEnd.push(srcEnd);
       back.push(backOf(i));
     }
     if (folded !== base.slice(i, i + w)) changed = true;
@@ -376,7 +362,7 @@ function normalizeNumberNotation(input: NormalizedText, options: NormalizeOption
 
   const base = input.text;
   const baseMap = input.map;
-  const baseEnd = input.mapEnd ?? inferCharEndOffsets(baseMap, base.length);
+  const baseEnd = input.mapEnd ?? inferCharEndOffsets(baseMap, base);
   const out: string[] = [];
   const map: number[] = [];
   const mapEnd: number[] = [];
@@ -544,7 +530,7 @@ function foldCase(input: NormalizedText, options: NormalizeOptions): NormalizedT
   if (lowered.length === base.length) return { ...input, text: lowered };
   // 极少数字符 lower 后长度会变（如 İ → i̇），此时必须重建映射
   const baseMap = input.map;
-  const baseEnd = input.mapEnd ?? inferCharEndOffsets(baseMap, base.length);
+  const baseEnd = input.mapEnd ?? inferCharEndOffsets(baseMap, base);
   const map: number[] = [];
   const mapEnd: number[] = [];
   const back: number[] = [];
@@ -564,7 +550,7 @@ function foldCase(input: NormalizedText, options: NormalizeOptions): NormalizedT
 function foldPunctuationAndSpace(input: NormalizedText, options: NormalizeOptions): NormalizedText {
   const base = input.text;
   const baseMap = input.map;
-  const baseEnd = input.mapEnd ?? inferCharEndOffsets(baseMap, base.length);
+  const baseEnd = input.mapEnd ?? inferCharEndOffsets(baseMap, base);
   const ignorePunctuation = options.ignorePunctuation ?? false;
   const dropSpace = options.dropSpaceBetweenCJK ?? true;
 
@@ -630,7 +616,7 @@ function foldPunctuationAndSpace(input: NormalizedText, options: NormalizeOption
   // 空白去留由两侧文字的「空格角色」决定，见 canDropSpaceBetween
   const text = folded.text;
   const textMap = folded.map;
-  const textEnd = folded.mapEnd ?? inferCharEndOffsets(textMap, text.length);
+  const textEnd = folded.mapEnd ?? inferCharEndOffsets(textMap, text);
   const textBack = folded.back;
   const drop = new Array<boolean>(text.length).fill(false);
   for (let k = 0; k < text.length; k++) {
@@ -665,23 +651,67 @@ function foldPunctuationAndSpace(input: NormalizedText, options: NormalizeOption
 
 // #region 下标映射工具
 
-/** 建「逐字符恒等映射」，作为流水线的起点 */
+/**
+ * 建「逐 code unit 恒等映射」，作为流水线的起点。
+ *
+ * @remarks
+ * 索引口径是 **code unit**（与 `indexOf` / `slice` 一致），
+ * 但 `mapEnd` 必须按**字符**给 —— 代理对（Emoji、CJK 扩展 B…）占 2 个 unit，
+ * 若写成 `i + 1` 会落在代理对中间，切出半个代理项。
+ * 因此同一个字符的两个 unit 共享 `map`，`mapEnd` 都指向字符末尾。
+ */
 function createIdentityMap(src: string): NormalizedText {
   const n = src.length;
   const map: number[] = new Array(n + 1);
   const mapEnd: number[] = new Array(n + 1);
   const back: number[] = new Array(n + 1);
-  for (let i = 0; i <= n; i++) {
-    map[i] = i;
-    mapEnd[i] = Math.min(i + 1, n); // 字符 i 占 [i, i+1)；末位是哨兵
-    back[i] = i;
+  let i = 0;
+  while (i < n) {
+    const cp = src.codePointAt(i) as number;
+    const w = cp > 0xffff ? 2 : 1;
+    const end = Math.min(i + w, n);
+    for (let u = 0; u < w; u++) {
+      map[i + u] = i;
+      mapEnd[i + u] = end;
+      back[i + u] = i;
+    }
+    i += w;
   }
+  // 末尾哨兵：保证 map[len] 恒有定义
+  map[n] = n;
+  mapEnd[n] = n;
+  back[n] = n;
   return { text: src, map, mapEnd, back };
 }
 
-/** 输入只给了起始映射时，退化推算结束位置（假定每字符宽 1） */
-function inferCharEndOffsets(map: number[], textLen: number): number[] {
-  return map.map((v, i) => (i < map.length - 1 ? Math.min(v + 1, textLen) : v));
+/**
+ * 输入只给了起始映射时，退化推算结束位置。
+ *
+ * @remarks
+ * 宽度按 **code point** 取（代理对占 2 个 unit），
+ * 否则会与 {@link createIdentityMap} 一样落在代理对中间。
+ * 这是退化路径 —— 正常流程各阶段都会带上自己的 `mapEnd`。
+ */
+function inferCharEndOffsets(map: number[], text: string): number[] {
+  return map.map((v, i) => {
+    if (i >= text.length) return v; // 末尾哨兵
+    const cp = text.codePointAt(i) as number;
+    const w = cp > 0xffff ? 2 : 1;
+    return Math.min(v + w, text.length);
+  });
+}
+
+/**
+ * 源码中**从 `at` 开始、宽 `w` 个 code unit 的那个字符**的结束下标。
+ *
+ * @remarks
+ * 代理对（astral 字符：Emoji、CJK 扩展 B…）占 **2 个** code unit。
+ * 此时 `ends[at]` 是**高代理项**的结束，落在字符中间 ——
+ * 用它切片会得到半个代理项（`'\uD83D'`），渲染成乱码。
+ * 必须取该字符**最后一个** code unit 的结束位置。
+ */
+function charEndOffset(ends: number[], at: number, w: number): number {
+  return ends[Math.min(at + w - 1, ends.length - 1)];
 }
 
 /**

@@ -20,7 +20,7 @@ pnpm run build
 ```
 
 **Test layout**: `vitest.workspace.ts` aggregates all 9 packages into **one
-run** with a single summary line (`Test Files 19 passed / Tests 253 passed`).
+run** with a single summary line (`Test Files 25 passed / Tests 349 passed`).
 You can also run one package: `pnpm --filter @isdk/zh-negation test`.
 
 **No path aliases at all** — pnpm workspaces already symlink `@isdk/*` to

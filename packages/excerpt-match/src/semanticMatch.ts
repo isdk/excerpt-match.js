@@ -24,6 +24,30 @@ export { splitSegments };
 export type { Segment, SemanticRetriever };
 
 /**
+ * 取 {@link NormalizedText} 的一个子区间，三张映射表**一并切片**。
+ *
+ * @remarks
+ * 切片之所以安全：`map` / `mapEnd` / `back` 存的是指向各自目标的**绝对**下标，
+ * 切片只改变数组长度，不改变每个元素的含义。
+ *
+ * 反面教材：**把整页的 `map` 直接配给一段子文本**是错误的 ——
+ * 那样 `map[0]` 会指向整页起点，段内偏移全部错位。
+ * 段内对齐（`SegmentAligner`）拿到的正是这种子区间，所以必须切片。
+ *
+ * 长度取 `+1` 是为了保留末尾哨兵，使 `map[len]` 恒有定义
+ * （与 {@link NormalizedText.map} 的契约一致）。
+ */
+function sliceNormalized(nt: NormalizedText, start: number, length: number): NormalizedText {
+  const end = start + length;
+  return {
+    text: nt.text.slice(start, end),
+    map: nt.map.slice(start, end + 1),
+    mapEnd: nt.mapEnd?.slice(start, end + 1),
+    back: nt.back?.slice(start, end + 1),
+  };
+}
+
+/**
  * 语义定位（本库坐标版）。
  *
  * @remarks
@@ -54,14 +78,12 @@ export async function locateSemantic(
   // 把本库的 FallbackMatcher 适配成子包要的 SegmentAligner。
   // 子包给的是**段内相对偏移**，这里要带上段的起点换算成整页偏移。
   const aligner = options.aligner
-    ? (excerpt: string, segmentText: string) => {
-        const needle = normalizeWithMap(excerpt, { ignoreCase: true, ignoreWidth: true }).text;
+    ? (excerpt: string, segmentText: string, segmentStart = 0) => {
+        // ★ 摘录必须用**与页面同一套**归一化选项，
+        //   否则摘录与页面不在同一个归一化空间里，永远对不上。
+        const needle = normalizeWithMap(excerpt, index.normalizeOptions).text;
         if (!needle) return null;
-        // 子区间复用整页的 map 切片：map 存的是原文绝对下标，切片天然安全
-        const subHay: NormalizedText = {
-          text: segmentText,
-          map: index.norm.map,
-        };
+        const subHay = sliceNormalized(index.norm, segmentStart, segmentText.length);
         const cands = options.aligner!.find(needle, subHay, ctx);
         if (!cands) return null;
         let best = null;
@@ -77,6 +99,9 @@ export async function locateSemantic(
     aligner,
     checkPolarity: options.checkPolarity,
     negationLexicon: options.negationLexicon,
+    // 语言与分词器透传给检索器（BM25 / 多语模型需要）
+    locale: profile.id,
+    tokenize: (t: string) => tokenize(t, profile),
   });
 
   if (!hit) return NO_MATCH;

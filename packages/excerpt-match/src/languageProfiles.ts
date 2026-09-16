@@ -161,7 +161,10 @@ const BUILTIN_LOCALES = new Set(
 );
 
 /**
- * 取（或构造）分词器。
+ * 取（或构造 + 缓存）词级分段器。
+ *
+ * 导出供 {@link detectNegation} 等内部模块复用 ——
+ * **只应有一份缓存**，各自持有一份会让容量约束失效。
  *
  * @remarks
  * **必须容错**：`locale` 可能来自用户输入，而
@@ -169,12 +172,6 @@ const BUILTIN_LOCALES = new Set(
  * 未捕获的话，一个非法输入就能让整个定位流程崩溃。
  *
  * 非法 locale 退化为**默认分词器**并照样缓存（避免每次都重试构造）。
- */
-/**
- * 取（或构造 + 缓存）词级分段器。
- *
- * 导出供 {@link detectNegation} 等内部模块复用 ——
- * **只应有一份缓存**，各自持有一份会让容量约束失效。
  */
 export function getWordSegmenter(locale: string): Intl.Segmenter {
   const cached = wordSegmenterCache.get(locale);

@@ -52,11 +52,8 @@ npm install
 ```
 
 ```ts
-import {
-  locateExcerpt,
-  createPageIndex,
-  createMdastFlattener,
-} from './src';
+import { locateExcerpt } from './src';
+import { createMdastFlattener } from '@isdk/md-flatten';
 import { fromMarkdown } from 'mdast-util-from-markdown';
 import { gfm } from 'micromark-extension-gfm';
 import { gfmFromMarkdown } from 'mdast-util-gfm';
@@ -356,6 +353,7 @@ are never standalone tokens.
 
 ```ts
 import * as jieba from '@isdk/nlp-jieba';
+import { createJiebaParticleTagger } from '@isdk/zh-particles';
 
 const tagger = createJiebaParticleTagger(jieba);
 locateExcerpt(ex, page, { markdown: md, ignoreParticles: tagger });
@@ -466,6 +464,7 @@ decimals, and chained carries.
 
 ```ts
 import * as cjk from 'cjk-number';
+import { createCjkNumberParser } from '@isdk/normalize-text';
 locateExcerpt(ex, page, {
   cjkNumerals: true,
   cjkNumeralParser: createCjkNumberParser(cjk),  // inject the backend
@@ -485,34 +484,49 @@ result is still `3思而行`, exactly as before.
 That is an **inherent ambiguity of the language**, not an implementation defect —
 which is why `cjkNumerals` still defaults to off.
 
-## Import only what you need: subpath exports
+## Need only part of it? Install the sub-package
 
-If you only need part of the functionality, you do not have to pull in the whole
-matcher. Four subpaths are **standalone entry points**:
+This package **exposes only its own contract** (locating, presets, language
+profiles, T3/T4 adapters). The capabilities underneath have been split into
+standalone packages, **published separately with their own README** — install
+the one you need instead of pulling in the whole matcher:
 
-| Subpath | Provides | External deps |
-|---|---|---|
-| `excerpt-match/number` | Chinese numerals, digit grouping | **none** |
-| `excerpt-match/text` | graphemes, script classes, normalization | none |
-| `excerpt-match/linguistics` | negation, 的/地/得, language profiles | none |
-| `excerpt-match/markdown` | markdown flattening (rendered ↔ source coords) | mdast |
+| Capability | Package |
+|---|---|
+| normalization + source coordinate mapping | `@isdk/normalize-text` |
+| markdown source ↔ rendered text coordinates | `@isdk/md-flatten` |
+| approximate span location (T3) | `@isdk/approx-text-match` |
+| two-stage semantic location (T4) | `@isdk/semantic-locate` |
+| script-aware whitespace | `@isdk/whitespace-semantics` |
+| identifier variant folding | `@isdk/identifier-variants` |
+| Chinese negation detection | `@isdk/zh-negation` |
+| 的/地/得 disambiguation | `@isdk/zh-particles` |
 
 ```ts
-import { parseChineseNumeral } from 'excerpt-match/number';
-parseChineseNumeral('一百二十三', 0); // { value: 123, consumed: 5 }
+import { normalizeWithMap, snapToGraphemeBoundary } from '@isdk/normalize-text';
+import { unicodeScriptOf, canDropSpaceBetween } from '@isdk/whitespace-semantics';
+import { detectNegation } from '@isdk/zh-negation';
+import { createJiebaParticleTagger } from '@isdk/zh-particles';
+import { createMdastFlattener } from '@isdk/md-flatten';
+import { splitSegments } from '@isdk/semantic-locate';
 
-import { detectNegation } from 'excerpt-match/linguistics';
+import { createCjkNumberParser } from '@isdk/normalize-text';
+import * as cjk from 'cjk-number';
+// The parser backend is injected (this library ships no Chinese-numeral parser)
+createCjkNumberParser(cjk).parse('一百二十三', 0); // { value: '123', consumed: 5 }
+
 detectNegation('他没来').negated; // true
 detectNegation('非常').negated;   // false (solid word, not a negation)
 
-import { createMdastFlattener } from 'excerpt-match/markdown';
 const flat = createMdastFlattener(fromMarkdown).flatten(mdSource);
 flat.text;    // visible text after rendering
 flat.map[10]; // offset of the 10th character in the markdown source
 ```
 
-Each sub-entry is tiny (200–800 bytes plus a shared chunk), and
-`number` / `text` / `linguistics` have no external dependencies at all.
+> Language profiles (`detectLanguageProfile` / `languageProfileFor` / `tokenize`)
+> and the T3/T4 adapter factories (`createBitapFallback` / `createDmpEsFallback` /
+> `locateSemantic`) are implemented **by this package** — keep importing them
+> from `excerpt-match`.
 
 > For module layering, the dependency graph, and coordinate systems, see
 > **[ARCHITECTURE.en.md](./ARCHITECTURE.en.md)**.

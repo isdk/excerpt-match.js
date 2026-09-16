@@ -4,11 +4,7 @@ import {
   createTextIndex,
   isHit,
   NO_MATCH,
-  createJiebaParticleTagger,
-  snapToGraphemeBoundary,
-  detectNegation,
   detectLanguageProfile,
-  normalizeWithMap,
   DEFAULT_ELLIPSIS,
   createDmpEsFallback,
   createDmpFallback,
@@ -17,8 +13,10 @@ import {
 } from './index';
 import { diff_match_patch } from 'diff-match-patch';
 import * as dmpEs from 'diff-match-patch-es';
-import { createCjkNumberParser } from '@isdk/normalize-text';
+import { createCjkNumberParser, normalizeWithMap, snapToGraphemeBoundary } from '@isdk/normalize-text';
 import type { CjkNumberLike } from '@isdk/normalize-text';
+import { detectNegation } from '@isdk/zh-negation';
+import { createJiebaParticleTagger } from '@isdk/zh-particles';
 
 // cjk-number 是可选依赖，且是 **ESM-only**（package.json 没有 CJS main，require 会失败）。
 // 所以用动态 import 加载；未安装时静默跳过相关用例。

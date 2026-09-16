@@ -1,9 +1,7 @@
 {
   "name": "@isdk/excerpt-match",
   "version": "1.0.0",
-  "workspaces": [
-    "packages/*"
-  ],
+  "license": "MIT",
   "type": "module",
   "main": "./src/index.ts",
   "module": "./src/index.ts",

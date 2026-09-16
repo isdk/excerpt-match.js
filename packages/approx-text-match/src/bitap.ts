@@ -19,8 +19,6 @@
 
 // #region 小工具
 
-// #region 小工具
-
 /** 挑一段「在原文里出现次数最少」的种子。Bitap/模糊搜索对长 pattern 有上限，
  *  用短种子定位再扩展，比直接扔长串进去更稳（seed-and-extend）。 */
 function pickSeed(hay: string, needle: string, maxLen = 24): { seed: string; offset: number } | null {
@@ -52,8 +50,6 @@ function charF1(common: number, a: number, b: number): number {
 
 // #endregion
 
-// #endregion
-
 // #region T3：Bitap + 序列比对
 
 /** 归一化操作码：0 = 相同, -1 = 页面多出, 1 = 摘录多出 */
@@ -82,17 +78,13 @@ export interface DiffChunk {
 }
 
 /**
- * Bitap 风格的模糊定位器 —— 在大文本中找出近似子串的位置。
+ * 近似定位器 —— 在大文本中找出近似子串的**位置**。
  *
  * @remarks
  * 这是整个 T3 的**能力核心**，也是选型时最该看的东西。
  * 注意它和「计算两个字符串的差异」是完全不同的能力：
  * jsdiff / @lowlighter/diff 只有后者，没有这个。
- */
-/**
- * 近似定位器。
  *
- * @remarks
  * 输入输出都是**纯字符串下标** —— 这是刻意的：本包不关心坐标映射，
  * 只回答"哪一段最像"。调用方（如需要高亮到原文）再自行换算。
  */
@@ -148,12 +140,20 @@ export interface BitapFallbackOptions {
  * @param options 阈值与窗口配置
  * @returns 近似定位器
  */
+/**
+ * 默认窗口余量：种子两侧各开多少字符供 diff 精修。
+ *
+ * 要足够大以容纳「摘录比种子长的部分」与少量增删，
+ * 但过大会把无关内容算进 diff 分母压低分数（见下方评分说明）。
+ */
+const DEFAULT_SLACK = 64;
+
 export function createBitapFallback(
   match: BitapMatcher,
   diff: Differ,
   options: BitapFallbackOptions = {}
 ): ApproxMatcher {
-  const slack = options.slack ?? Math.max(16, 64);
+  const slack = options.slack ?? DEFAULT_SLACK;
   const name = options.name ?? 'bitap';
 
   return {

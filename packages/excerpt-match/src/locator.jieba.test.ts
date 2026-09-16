@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { locateExcerpt, isHit, createJiebaParticleTagger, normalizeWithMap } from './index';
-import type { ParticleTagger } from '@isdk/zh-particles';
+import { locateExcerpt, isHit } from './index';
+import { normalizeWithMap } from '@isdk/normalize-text';
+import { createJiebaParticleTagger, type ParticleTagger } from '@isdk/zh-particles';
 
 /**
  * 中文结构助词「的 / 地 / 得」：为什么需要词性。

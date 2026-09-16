@@ -63,8 +63,10 @@ export async function locateSemantic(
   const segments = splitSegments(text, options.maxSegmentLength ?? 300);
   if (segments.length === 0) return null;
 
+  // 语言与分词器本包不探测、不使用，只透传给检索器（BM25 / 多语模型需要）
   const ctx: SemanticContext = {
-    locale: options.negationLexicon ? undefined : undefined,
+    locale: options.locale,
+    tokenize: options.tokenize,
   };
 
   // 极性守卫
@@ -83,10 +85,13 @@ export async function locateSemantic(
   // 归一化只发生在 via='segment'（拿不到对齐分）时，且结果仅排序意义。
   const normalized = normalizeScores(ranked.map((h) => h.score));
 
+  // ★ 前 topK 名**都要**尝试对齐：召回只负责排序，排第一的未必是能精确对齐的那段。
+  // 只有全部对齐失败才降级 —— 因此降级必须写在循环**之后**。
   for (let rank = 0; rank < ranked.length; rank++) {
     const hit = ranked[rank];
     const seg = segments[hit.index];
-    const aligned = tryAlignWithin(seg.text, excerpt, aligner, minAlign);
+    // 段起点一并交给对齐器：调用方要把它换算成整页坐标
+    const aligned = tryAlignWithin(seg.text, excerpt, aligner, minAlign, seg.start);
     if (aligned) {
       return {
         start: seg.start + aligned.start,
@@ -100,19 +105,23 @@ export async function locateSemantic(
         recallScore: hit.score,
       };
     }
-    return {
-      start: seg.start,
-      end: seg.start + seg.text.length,
-      // 无对齐分可用 → 如实给出归一化召回分（仅排序意义），
-      // 并降权表示"未经精确对齐确认"
-      score: clamp01(normalized[rank] * SEGMENT_FALLBACK_FACTOR),
-      via: 'segment',
-      segmentIndex: hit.index,
-      recallRank: rank,
-      recallScore: hit.score,
-    };
   }
-  return null;
+
+  // 降级：高亮**排名最前**的那一段（rank 0），而不是最后尝试的那个。
+  const top = ranked[0];
+  if (!top) return null;
+  const topSeg = segments[top.index];
+  return {
+    start: topSeg.start,
+    end: topSeg.start + topSeg.text.length,
+    // 无对齐分可用 → 如实给出归一化召回分（仅排序意义），
+    // 并降权表示"未经精确对齐确认"
+    score: clamp01(normalized[0] * SEGMENT_FALLBACK_FACTOR),
+    via: 'segment',
+    segmentIndex: top.index,
+    recallRank: 0,
+    recallScore: top.score,
+  };
 }
 
 /** 降级系数：整段命中未经对齐确认，故降权表示不确定 */
@@ -157,10 +166,11 @@ function tryAlignWithin(
   segmentText: string,
   excerpt: string,
   aligner: SegmentAligner | undefined,
-  minAlign: number
+  minAlign: number,
+  segmentStart: number
 ): { start: number; end: number; score: number } | null {
   if (!aligner) return null;
-  const r = aligner(excerpt, segmentText);
+  const r = aligner(excerpt, segmentText, segmentStart);
   if (!r || r.score < minAlign) return null;
   return r;
 }

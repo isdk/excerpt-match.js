@@ -1,13 +1,11 @@
 import { defineConfig } from 'tsup';
 export default defineConfig({
-  // 多入口：主入口 + 若干子路径，便于按需引入（tree-shaking 更彻底，
-  // 也避免「只想用中文数字解析却引入整个匹配器」）
-  entry: [
-    'src/index.ts',
-    'src/number.ts',
-    'src/text.ts',
-    'src/linguistics.ts',
-  ],
+  // 单入口。
+  //
+  // 曾经有 number / text / linguistics 等子路径，但它们只是把子包的契约
+  // 从主包再导出一遍 —— 拆包之后主包不再代售子包契约，需要那些能力请直接
+  // 装 `@isdk/normalize-text` / `@isdk/md-flatten` / … 子包。
+  entry: ['src/index.ts'],
   format: ['esm', 'cjs'],
   dts: true,
   clean: true,

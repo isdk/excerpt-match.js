@@ -17,91 +17,83 @@ Everything else is orchestration and trade-offs around those two.
 
 ## 2. Layers
 
-Modules are layered by dependency: **upper layers may depend on lower ones, never the
-reverse** (verified: no cycles).
+Packages are layered by dependency: **upper layers may depend on lower ones, never
+the reverse** (verified: no cycles).
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│ L4  entry                                                  │
-│     index.ts (69)              re-export only             │
+│ L4  root package (orchestration)                         │
+│     @isdk/excerpt-match                                  │
+│       locator.ts      core orchestration, the only flow  │
+│       presets.ts      three presets                      │
+│       languageProfiles.ts  language policy + segmenter cache │
+│       fuzzyMatch.ts / semanticMatch.ts   T3/T4 adapters  │
 ├──────────────────────────────────────────────────────────┤
-│ L3  orchestration / adapters                                           │
-│     locator.ts (716)       ← the only main flow        │
-│     markdown.ts (552)      ← markdown flattening (reusable alone)         │
-│     fuzzyMatch.ts (299)    ← T3 adapter                   │
-│     semanticMatch.ts (212) ← T4 adapter                   │
+│ L3  semantic / approximate                               │
+│     @isdk/semantic-locate     two-stage locating (T4)    │
+│     @isdk/approx-text-match   approximate span (T3)      │
 ├──────────────────────────────────────────────────────────┤
-│ L2  normalization                                                │
-│     normalize.ts (697)     ← hardest part; see below              │
-│     negation.ts (267)      ← polarity guard                     │
-│     languageProfiles.ts (240)                            │
+│ L2  coordinate mapping (the two hardest parts)           │
+│     @isdk/normalize-text     normalization + mapping     │
+│     @isdk/md-flatten         md source ↔ rendered text   │
 ├──────────────────────────────────────────────────────────┤
-│ L1  无依赖的叶子                                          │
-│     chineseParticles.ts (221)  的/地/得                   │
-│     numberNotation.ts (177)    number notation (reusable alone)       │
-│     grapheme.ts (77)           graphemes                     │
-│     unicodeScript.ts (84)      script classes                   │
-├──────────────────────────────────────────────────────────┤
-│ L0  contract                                                  │
-│     types.ts (605)         pure types + the NO_MATCH constant          │
+│ L1  dependency-free leaves                               │
+│     @isdk/whitespace-semantics   script-aware whitespace │
+│     @isdk/identifier-variants    identifier variants     │
+│     @isdk/zh-particles           的/地/得                │
+│     @isdk/zh-negation            Chinese negation        │
 └──────────────────────────────────────────────────────────┘
 ```
 
-Numbers in parentheses are line counts. Total: 4,216 lines of source + 1,572 of tests.
+The four L1 packages are **completely dependency-free** — they are the part that is
+genuinely reusable on its own.
 
-## 3. Module dependency graph
+## 3. Package dependency graph
 
 ```
-types  ◄──────────────────┬──────────────┬─────────────┐
-  ▲                       │              │             │
-  │              chineseParticles   numberNotation  grapheme
-  │                    ▲            ▲              ▲     ▲
-  │                    │            │              │     │
-  │              ┌─────┴────────────┴──────┐       │     │
-  │              │     normalize           │───────┘     │
-  │              └──────────┬──────────────┘             │
-  │                         │                            │
-  │              unicodeScript ──┐                       │
-  │                    ▲         │                       │
-  │              languageProfiles│                       │
-  │                    ▲         │                       │
-  │                negation ─────┘                       │
-  │                    ▲                                 │
-  ├────────────────────┼─────────────────────────────────┤
-  │              markdown                                │
-  │                    ▲                                 │
-  └──────────────  locator  ←── semanticMatch            │
-                      ▲                                  │
-                fuzzyMatch                               │
-                                                          │
-  index.ts 汇总以上全部 ────────────────────────────────────┘
+                    @isdk/excerpt-match  (root)
+                            │
+        ┌───────────┬───────┴────┬──────────────┐
+        ▼           ▼            ▼              ▼
+  semantic-locate  approx-   md-flatten   normalize-text
+        │          text-match     │              │
+        │              │          │         ┌────┼────┬────┐
+        ▼              │          ▼         ▼    ▼    ▼    ▼
+   zh-negation         │    normalize-text  whitespace- identifier- zh-particles
+                       │                     semantics  variants
+                       └────────────────────────┘
 ```
 
-`semanticMatch` → `locator` only **borrows `spanFromNormalized` for coordinate mapping**,
-not the main flow, so it is not a cycle.
+Points:
+
+- `md-flatten` depends on `normalize-text` (it produces a `NormalizedText`)
+- `semantic-locate` depends on `zh-negation` (polarity guard)
+- `approx-text-match` **depends on no sibling** (pure string spans only)
+- the four L1 packages do not depend on each other and can be installed alone
 
 ## 4. Main flow (`locator.ts` / `locateIn`)
 
 ```
-摘录 + 页面
+excerpt + page
     │
-    ├─ buildHay：页面 → normalization空间（md 模式先摊平）
-    │      ├── strict 视图（块间有分隔符）
-    │      └── joined 视图（块间无分隔符，供跨块摘录）
+    ├─ buildHay: page → normalized space (flatten first in md mode)
+    │      ├── strict view (separators between blocks)
+    │      └── joined view (no separators, for cross-block excerpts)
     │
-    ├─ T0 精确        raw.indexOf(excerpt)             → kind: exact
-    ├─ T1 normalization      norm.text.indexOf(needle)        → kind: normalized
-    ├─ T2 分段锚点    省略号切成多段链式定位              → kind: segmented
-    │      └── 两个视图都试，取**最早**的命中（位置 > 强度）
+    ├─ T0 exact          raw.indexOf(excerpt)        → kind: exact
+    ├─ T1 normalized     norm.text.indexOf(needle)   → kind: normalized
+    ├─ T2 segmented      split on ellipsis, chain the anchors
+    │      │                                          → kind: segmented
+    │      └── both views are tried; take the **earliest** hit (position > strength)
     │
-    ├─ T3 模糊        外部 matcher（dmp Bitap）          → kind: fuzzy
-    ├─ T4 语义        外部 embedding 召回 + 段内对齐      → kind: semantic
-    │      └── polarity guard在**候选过滤**阶段，不是命中后
+    ├─ T3 fuzzy          external matcher (dmp Bitap) → kind: fuzzy
+    ├─ T4 semantic       external recall + in-segment alignment → kind: semantic
+    │      └── polarity guard runs at **candidate filtering**, not after the hit
     │
-    └─ spanFromNormalized：normalization区间 → 源码精确 span
+    └─ spanFromNormalized: normalized interval → exact source span
            ├── map[start] / mapEnd[end-1]
-           ├── expandMarkers：补齐 ** 等行内标记
-           └── snapToGraphemeBoundary：对齐graphemes
+           ├── expandMarkers: complete inline markers such as **
+           └── snapToGraphemeBoundary: align to grapheme clusters
 ```
 
 ## 5. Coordinate systems (read before changing anything)
@@ -118,23 +110,31 @@ not the main flow, so it is not a cycle.
 Key invariant:
 
 ```
-src.slice(map[i], mapEnd[i])  normalization后  ===  text[i]
+src.slice(map[0], mapEnd[len-1])  normalized  ===  text      ← the WHOLE span
 ```
 
 - `mapEnd` **cannot** be derived from `map[i+1]` — escapes (`\*`) and entities (`&amp;`)
   make one visible character span several source characters
 - `back` must **compose across stages** — each stage only knows "points at *its* input",
   so writing `at` directly loses length changes from earlier stages
+- indices are **UTF-16 code units**, but `mapEnd` is given per **character** —
+  surrogate pairs (emoji, CJK Ext-B) occupy 2 units, so `i+1` would cut one in half
+
+**"Whole span" is not hedging.** NFKC expansion (`ﬁ` → `fi`) makes several output
+characters **share** one source interval, so "character *i* maps back to itself" does
+**not** hold — a single character maps back to the whole expansion. This is
+deliberate and conservative (better to cut wide than to cut short) and is pinned by
+property tests.
 
 ## 6. The normalization pipeline (`normalize.ts`)
 
 Four explicit stages; **the order is a contract and must not be changed**:
 
 ```
-1. foldWidth          NFKC + 剔零宽字符
-2. normalizeNumbers   数字记法          ← 必须在 1 之后、4 之前
-3. foldCase           大小写
-4. foldPunctAndSpace  标点 / 助词 / 空白
+1. foldWidth          NFKC + strip zero-width
+2. normalizeNumbers   number notation   ← must be after 1, before 4
+3. foldCase           case folding
+4. foldPunctAndSpace  punctuation / particles / whitespace
 ```
 
 Why numbers must run at 2 (full reasoning in the README, "Digit grouping" section):
@@ -144,69 +144,97 @@ Why numbers must run at 2 (full reasoning in the README, "Digit grouping" sectio
 - **before punctuation folding**: the enumeration comma `、` is not folded by NFKC, so
   running earlier distinguishes `1,000` (grouping) from `1、000` (a list)
 
-## 7. Reusing just part of it
+## 7. Reusing just part of it?
 
-The L1 layer has no dependencies at all and can be used standalone:
+Every sub-package can be installed on its own and has its own README:
 
-| Capability | Import | Deps |
-|---|---|---|
-| Chinese numeral parsing | `parseChineseNumeral` | none |
-| Digit grouping | `stripGroupingSeparators` | none |
-| Graphemes | `snapToGraphemeBoundary` | none |
-| Script classes | `unicodeScriptOf` | none |
-| Negation detection | `detectNegation` | `languageProfiles` |
-| Markdown flattening | `createMdastFlattener` | mdast |
+```ts
+import { normalizeWithMap } from '@isdk/normalize-text';   // highlighting/diff need it
+import { createMdastFlattener } from '@isdk/md-flatten';   // comment anchoring
+import { detectNegation } from '@isdk/zh-negation';        // sentiment analysis
+import { createCachedFlattener } from '@isdk/md-flatten';  // flatten cache
+```
 
-If you only need these, **you do not need the whole matcher** — see "subpath exports"
-  in the README.
+**The root package does not resell sub-package contracts.** None of the symbols above
+are exported from `@isdk/excerpt-match` — the whole point of splitting is to let them
+evolve independently; re-exporting them would re-couple the two (one sub-package
+change forces a root-package release).
+
+The root entry keeps only two kinds of things:
+
+1. **APIs this package implements itself** — locating, presets, language profiles,
+   T3/T4 adapter factories
+2. **types that appear in those APIs' signatures** — otherwise callers cannot pass
+   arguments or read return values (e.g. `NormalizedText`, `MarkdownFlattener`,
+   `BitapMatcher`, `SemanticRetriever`)
+
+Criterion for splitting: **only what nobody has done *and* what has general value**.
+Chinese numerals, segmentation, Bitap, graphemes and markdown parsing all have
+existing libraries — use theirs.
 
 ## 8. Where to change what
 
-| Goal | Change | Watch out for |
+| Goal | Package | Watch out for |
 |---|---|---|
-| add a normalization rule | `normalize.ts` stage 4 | must update all of `map`/`mapEnd`/`back` |
-| add a language | `languageProfiles.ts` | first test "does dropping spaces change segmentation" |
-| add a match tier | `MatchKind` in `types.ts` + `locator` | remember to rank it in `strength()` |
-| swap the fuzzy library | `fuzzyMatch.ts` | the adapter contract only reaches normalized-space coords |
-| change coordinate mapping | `spanFromNormalized` | do not skip `mapEnd` or grapheme snapping |
+| add a normalization rule | `normalize-text` | must update all of `map` / `mapEnd` / `back` |
+| add a language | root `languageProfiles.ts` | first test "does dropping spaces change segmentation" |
+| add a preset | root `presets.ts` | explicit options always win over the preset, never the reverse |
+| add a match tier | `MatchKind` in root `types.ts` + `locator` | remember to rank it in `strength()` |
+| swap the fuzzy library | `adapters.ts` in `approx-text-match` | only two functions needed: `match` and `diff` |
+| change coordinate mapping | `normalize-text` / `md-flatten` | neither `mapEnd` nor grapheme snapping may be skipped |
+| add a flatten cache | `cachedFlattener.ts` in `md-flatten` | prefer docId as key; same id implies same content |
 
-## 9. Why this is not split into packages
+**Cross-package changes**: adding one punctuation equivalence only touches
+`normalize-text`; it does not leak. The only thing that truly needs coordination is
+**adding a language** (touches both `languageProfiles` and `whitespace-semantics`).
 
-4,216 lines, 18 top-level exports, 1 runtime dependency — at this size the cost of
- splitting outweighs the benefit:
-
-- the core tension is that **normalization and coordinate mapping are tightly coupled**;
-  splitting forces two packages to share `NormalizedText`, i.e. no real split
-- cross-package versioning turns "change one normalization rule" into a coordinated
-  multi-package release
-
-**What actually reduces complexity is layering and documentation, not physical
- splitting.** If you do need to reuse part of it independently,
-use `exports` subpath entries (see the README) — no package split required.
-
-
-## 8. Packages (now split)
+## 9. Package split (already done)
 
 Early versions of this doc argued against splitting. The criterion is
 **"does a library already exist; if not, does this have general value?"**
 
-| package | role | layer |
+| package | role | tier |
 |---|---|---|
-| `@isdk/excerpt-match` | root: orchestration + coordinate system | T0–T4 |
+| `@isdk/excerpt-match` | root: tiered locating and orchestration + unified coordinates | T0–T4 |
 | `@isdk/normalize-text` | normalization + source-coordinate mapping | T1 |
-| `@isdk/md-flatten` | md source ↔ rendered text mapping | T0/T1 |
-| `@isdk/approx-text-match` | approximate span location | T3 |
-| `@isdk/semantic-locate` | two-stage semantic locating | T4 |
-| `@isdk/whitespace-semantics` | script-aware whitespace | T1 |
+| `@isdk/md-flatten` | md source ↔ rendered text mapping, both ways | T0/T1 |
+| `@isdk/approx-text-match` | approximate substring location (contiguous span + score) | T3 |
+| `@isdk/semantic-locate` | two-stage semantic locating: retrieve → align | T4 |
+| `@isdk/whitespace-semantics` | script-aware whitespace (Hangul/Thai spaces matter) | T1 |
 | `@isdk/identifier-variants` | `TensorFlow` ≡ `tensor_flow` | T1 |
-| `@isdk/zh-negation` | Chinese negation detection | guard |
-| `@isdk/zh-particles` | 的/地/得 particle judgment | T1 |
+| `@isdk/zh-negation` | Chinese negation detection (word-boundary aware) | guard |
+| `@isdk/zh-particles` | 的/地/得: particle vs content word | T1 |
 
 **Not built in-house**: Chinese numerals (`cjk-number`), segmentation
 (`Intl.Segmenter` / jieba), Bitap (`diff-match-patch-es`), graphemes
 (`Intl.Segmenter`), markdown (`mdast-util-*`), caching (`secondary-cache`).
 
-## 9. Performance and caching
+### Why number notation is not its own package
+
+It is **position-sensitive** in the pipeline: it must run after NFKC and before
+punctuation folding. Splitting it out makes it easy to place wrong — some things are
+coupled not in code but in **execution order**.
+
+## 10. Presets
+
+25 options, most of them scene-dependent, hence `preset`:
+
+| | `strict` | `default` | `loose` |
+|---|---|---|---|
+| for | citation checking / forensics | highlighting / anchoring | dedup / retrieval |
+| `ignorePunctuation` | false | false | **true** |
+| `allowSegmented` | **false** | true | true |
+| `allowCrossBlock` | **false** | true | true |
+| `checkPolarity` | true | true | true |
+| `cjkNumerals` | false | false | false |
+| `ignoreParticles` | false | false | false |
+
+**Explicit options always override the preset.** The last two rows are identical on
+purpose — a deliberate safety floor: `cjkNumerals` collapses 「一一」 and 「十一」 into
+the same string (a source of false hits), and `ignoreParticles` faces typos, not
+semantic equivalence.
+
+## 11. Performance and caching
 
 ### The bottleneck is flattening, not normalization (measured)
 
@@ -217,6 +245,8 @@ mdast flatten   298.6ms   ← 88%
 normalize        41.7ms   ← 12%
 ```
 
+So optimize around flattening.
+
 ### Three cache layers
 
 | layer | caches | mechanism |
@@ -225,10 +255,9 @@ normalize        41.7ms   ← 12%
 | flatten results | `FlatResult` | `createCachedFlattener` in `md-flatten` |
 | normalized views | `strict` + joined | lazy, inside a `TextIndex` |
 
-**Why a separate flatten cache**: `TextIndex` caching is **per-instance**,
-so the same document parsed by two indexes is parsed twice. Flattening depends
-only on the flattener, **not on `MatchOptions`** — rebuilding on an option
-change is pure waste.
+**Why a separate flatten cache**: `TextIndex` caching is **per-instance**, so the same
+document parsed by two indexes is parsed twice. Flattening depends only on the
+flattener, **not on `MatchOptions`** — rebuilding on an option change is pure waste.
 
 ### Reuse payoff
 
@@ -254,21 +283,6 @@ if content changes under one id (a live editor draft), return `undefined` from
 
 id keys carry a `\u0000id:` prefix so they cannot collide with a full-text key.
 
-## 10. Presets
-
-| | `strict` | `default` | `loose` |
-|---|---|---|---|
-| for | citation checking | highlighting | dedup / retrieval |
-| `ignorePunctuation` | false | false | **true** |
-| `allowSegmented` | **false** | true | true |
-| `allowCrossBlock` | **false** | true | true |
-| `checkPolarity` | true | true | true |
-| `cjkNumerals` | false | false | false |
-| `ignoreParticles` | false | false | false |
-
-**Explicit options always override the preset.**
-
-
 ## 12. Test layout
 
 | level | command | output |
@@ -283,26 +297,29 @@ The latter runs each package separately, producing 9 independent
 aggregates them:
 
 ```
- Test Files  19 passed (19)
-      Tests  253 passed (253)
+ Test Files  25 passed (25)
+      Tests  349 passed (349)
 ```
 
 Total and pass/fail in one glance.
 
-### Why there are no path aliases
+### Property tests (fast-check)
 
-pnpm workspaces already symlink `@isdk/*` to `packages/*`, so:
+Normalization is the only "magical" part, yet its input space is nearly unbounded
+(escapes, entities, zero-width, full-width, surrogate pairs, combining marks…).
+Hand-written cases cannot cover combinations nobody thought of, so
+`@isdk/normalize-text` carries `normalize.property.test.ts`: random text × random
+option combinations, asserting idempotence, `map` monotonicity,
+`map.length === text.length + 1`, whole-span round-tripping, and more.
 
-- each package's `main` / `module` / `types` / `exports` point at
-  **`src/index.ts` during development**
-- `publishConfig` switches to `dist` on publish
+**It is the main bug finder here**: the surrogate-pair `mapEnd` bug was caught on its
+very first run, not by review.
 
-Tests therefore resolve to source, never depend on build output, and
-`tsconfig.json` needs no `paths`. The earlier `vitest.shared.ts` (aliases
-everywhere) was redundant — pnpm is a monorepo tool; aliasing duplicated
-what it already does.
+Convention: when adding a normalization rule, first ask "which invariant does this
+break?", then add the assertion to the property tests.
 
 ### Per-package devDependencies
 
-External packages used by tests (mdast, `diff-match-patch`, jieba, `cjk-number`)
-live in the package that uses them, versions aligned with the root.
+External packages used by tests (mdast, `diff-match-patch`, jieba, `cjk-number`,
+`fast-check`) live in the package that uses them, versions aligned with the root.
+If a sub-package is later published standalone, its tests still run.

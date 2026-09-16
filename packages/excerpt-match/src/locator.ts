@@ -13,6 +13,7 @@ import type {
 } from './types';
 import { NO_MATCH } from './types';
 import { normalizeWithMap, snapToGraphemeBoundary } from '@isdk/normalize-text';
+import type { NormalizeOptions } from '@isdk/normalize-text';
 import { trimMarkdownEdges, expandToInlineMarkers, deriveJoined } from '@isdk/md-flatten';
 import { detectLanguageProfile, languageProfileFor, tokenize, type LanguageProfile } from './languageProfiles';
 import { withPreset } from './presets';
@@ -411,7 +412,7 @@ function findSegmented(hay: NormalizedText, needle: string, r: ResolvedOptions):
 }
 
 /**
- * 预归一化一次的页面索引，供多条摘录复用。
+ * 文本索引：预建好的归一化视图，供多次 {@link TextIndex.locate} 复用。
  *
  * @remarks
  * 页面归一化（含 md 摊平）是 O(n) 的重活。逐条摘录调用 {@link locateExcerpt}
@@ -422,9 +423,6 @@ function findSegmented(hay: NormalizedText, needle: string, r: ResolvedOptions):
  * const idx = createTextIndex(page, { markdown: md });
  * for (const it of items) console.log(idx.locate(it.excerpt));
  * ```
- */
-/**
- * 文本索引：预建好的归一化视图，供多次 {@link TextIndex.locate} 复用。
  *
  * @remarks
  * 命名说明：它索引的是**文本**（可以是 md 源码，也可以是纯文本），
@@ -443,6 +441,15 @@ export interface TextIndex {
   /** 归一化索引（含下标映射）；语义层段内对齐、调试时用 */
   readonly norm: NormalizedText;
 
+  /**
+   * 建索引时实际生效的归一化选项。
+   *
+   * @remarks
+   * **摘录侧必须用同一套选项归一化**，否则摘录与页面不在同一个空间里，
+   * 怎么匹配都对不上。`locateSemantic` 用它来归一化摘录。
+   */
+  readonly normalizeOptions: NormalizeOptions;
+
   /** markdown 块切片，坐标系与 `text` 一致；纯文本模式下为空数组 */
   readonly blocks: readonly FlatBlock[];
 
@@ -455,22 +462,6 @@ export interface TextIndex {
 }
 
 /**
- * 创建可复用的页面索引。
- *
- * 一个页面查多条摘录时**必须**用它 —— 否则每条摘录都会重跑整页归一化与 md 摊平。
- *
- * @param pageContent 页面正文（md 源码或纯文本）
- * @param options 匹配选项，见 {@link MatchOptions}
- * @returns 页面索引，见 {@link PageIndex}
- *
- * @example
- * ```ts
- * const idx = createTextIndex(mdSource, { markdown: md });
- * const a = idx.locate('第一段…');
- * const b = idx.locate('第二段…');
- * ```
- */
-/**
  * 兼容旧名。
  *
  * @deprecated 用 {@link createTextIndex} —— 它索引的是文本，不是"页面"。
@@ -479,6 +470,19 @@ export type PageIndex = TextIndex;
 
 /**
  * 建索引并复用。
+ *
+ * 一个页面查多条摘录时**必须**用它 —— 否则每条摘录都会重跑整页归一化与 md 摊平。
+ *
+ * @param pageContent 页面正文（md 源码或纯文本）
+ * @param options 匹配选项，见 {@link MatchOptions}
+ * @returns 文本索引，见 {@link TextIndex}
+ *
+ * @example
+ * ```ts
+ * const idx = createTextIndex(mdSource, { markdown: md });
+ * const a = idx.locate('第一段…');
+ * const b = idx.locate('第二段…');
+ * ```
  *
  * @remarks
  * 单次查询用 {@link locateExcerpt} 即可；**多次查询同一份文本时才需要它**。
@@ -492,6 +496,8 @@ export function createTextIndex(pageContent: string, options: MatchOptions = {})
 
   return {
     raw: pageContent,
+    // 摘录侧要用同一套选项归一化，否则两边不在同一个空间里（见 locateSemantic）
+    normalizeOptions: toNormalizationOptions(r),
     get text(): string {
       return norm().text;
     },

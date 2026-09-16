@@ -3,7 +3,8 @@ import { fromMarkdown } from 'mdast-util-from-markdown';
 import { gfm } from 'micromark-extension-gfm';
 import { gfmFromMarkdown } from 'mdast-util-gfm';
 import { createMdastFlattener } from '@isdk/md-flatten';
-import { locateExcerpt, isHit, normalizeWithMap } from './index';
+import { normalizeWithMap } from '@isdk/normalize-text';
+import { locateExcerpt, isHit } from './index';
 
 const md = createMdastFlattener(fromMarkdown, { extensions: [gfm], mdastExtensions: [gfmFromMarkdown] });
 const IGNORE = { ignorePunctuation: true as const };

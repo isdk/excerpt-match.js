@@ -96,10 +96,18 @@ export interface SemanticContext {
  * @remarks
  * 通常用 `@isdk/approx-text-match` —— 段内做一次近似定位即可。
  * 不传则退化为高亮整段（并降分）。
+ *
+ * 第三个参数 `segmentStart` 是**该段在输入文本中的起始下标**，供调用方
+ * 把「段内偏移」换算成整页坐标。**不能靠 `indexOf` 反查** ——
+ * 重复段落会查到第一个，坐标就错了。
+ *
+ * 虽然类型上是必填，但**实现方可以只声明两个参数** —— TS 允许实现的
+ * 形参数量少于调用方，所以旧的 `(excerpt, seg) => …` 依然可直接传入。
  */
 export type SegmentAligner = (
   excerpt: string,
-  segmentText: string
+  segmentText: string,
+  segmentStart: number
 ) => { start: number; end: number; score: number } | null;
 
 /**
@@ -155,6 +163,16 @@ export interface LocateSemanticOptions {
   negationLexicon?: NegationLexicon;
   /** 切段时的单段最大长度 @defaultValue 300 */
   maxSegmentLength?: number;
+  /**
+   * 语言标识，原样传给检索器（见 {@link SemanticContext.locale}）。
+   *
+   * @remarks
+   * 本包**不探测语言** —— 探测是调用方（或语言策略包）的职责。
+   * 但检索器常常需要它来选模型，所以这里只做透传。
+   */
+  locale?: string;
+  /** 分词函数，原样传给检索器（BM25 之类需要） */
+  tokenize?: (text: string) => string[];
 }
 
 // 仅用于 JSDoc 链接

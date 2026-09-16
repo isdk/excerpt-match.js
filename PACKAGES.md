@@ -55,12 +55,6 @@ Fuse.js   : matches = [[0,3],[5,9],[12,17]]              ← 分散片段
 
 > 所有候选包均已抽出。
 
-> `approx-text-match` 已抽出（见上）。数字记法**没有独立成包**：它在流水线里
-> 位置敏感（必须在 NFKC 之后、标点折叠之前），独立出去容易放错位置。
-| `@isdk/zh-negation` | 词边界感知的中文否定检测 | 守卫 | `Intl.Segmenter` | 中 —— 情感分析/法务可用 |
-
-> 所有候选包均已抽出。
-
 > 数字记法（千分位 + 中文数词）**没有独立成包**：它在流水线里位置敏感
 > （必须在 NFKC 之后、标点折叠之前），独立出去容易放错位置。
 > 现在随 `@isdk/normalize-text` 发布。
@@ -151,6 +145,10 @@ export interface NormalizedText {
 - ✅ 根目录**不再发布**（`private: true`），只做 workspace 管理与统一测试
 - ✅ 主包**已改为引用**子包（`src/normalize.ts` 等四个文件已删除），不是复制
 - ✅ 命名空间统一 `@isdk/`
+- ✅ **主包不再代售子包契约**：`src/number.ts` / `text.ts` / `linguistics.ts` 三个子路径
+  （以及曾短暂存在的 `markdown.ts`）已移除，主入口只剩 `src/index.ts`。
+  归一化、md 摊平、否定检测等能力请从 `@isdk/*` 子包导入。
+  保留的 re-export 仅限**主包 API 签名上出现的类型**
 - ✅ `NormalizedText` 类型已下沉到 `@isdk/normalize-text`（主包 re-export 保持 API 不变）
 - ✅ 流水线阶段 2b **已改为调用** `@isdk/identifier-variants` 的 `findIdentifierBreaks()`，
   消除了"同一规则写两遍"
@@ -175,7 +173,12 @@ packages/normalize-text/
 
 主包同理：`src/locator.ts` ↔ `src/locator.test.ts`。
 特性级测试用 `被测文件.特性.test.ts`（如 `locator.punctFolded.test.ts`），
-跨模块的属性测试放 `src/invariants.test.ts`。
+跨模块的不变量测试放 `src/invariants.test.ts`。
+
+**属性测试**（`fast-check`）单独放 `被测文件.property.test.ts`，
+用于随机输入下的不变量断言（随机文本 × 随机选项）。
+目前归一化有 `normalize-text/src/normalize.property.test.ts` —— 这个包的
+输入空间近乎无限，手写用例补不全。
 
 
 ## 八、score 的两种语义（重要）

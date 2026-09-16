@@ -176,62 +176,21 @@ import type { NormalizedText } from '@isdk/normalize-text';
 
 
 /**
- * 行内构造（加粗 / 斜体 / 链接 / 行内码…）在 md 源码中的位置。
- * 用于把 span 向两侧补齐完整的标记，避免切出半截片段。
- */
-export interface InlineConstruct {
-  /** 整个构造（含标记）的源码起始下标，如 `**被告**` 的 `**` 处 */
-  start: number;
-  /** 整个构造的源码结束下标 */
-  end: number;
-  /** 内容区间起点（去掉开始标记后），如 `**被告**` 的「被」处 */
-  contentStart: number;
-  /** 内容区间终点（去掉结束标记后） */
-  contentEnd: number;
-  /** 外层构造在 `constructs` 数组中的下标，-1 表示无外层。用于嵌套嵌套（如 `**a _b_ c**`） */
-  parent: number;
-}
-
-/**
- * Markdown 摊平器：md 源码 → 渲染后可见文本 + 精确源码映射。
+ * md 摊平相关的类型**只在 `@isdk/md-flatten` 定义一份**，这里 re-export。
  *
- * 用 mdast（注入）或正则（内置降级版）实现。
+ * @remarks
+ * 这里曾经各有一份结构相同的副本。TS 的结构类型让它照样能编译，
+ * 代价是：子包加字段时主包不会跟着变，**也不报错** —— 典型的静默漂移。
+ *
+ * 改用 re-export 后是单一事实来源，主包对外 API 不变。
  */
-export interface MarkdownFlattener {
-  /**
-   * 摊平 md 源码。
-   * @param src md 源码
-   * @returns 可见文本、源码坐标映射、块切片、行内构造
-   */
-  flatten(src: string): FlatResult;
-}
-
-/** 块级切片（段落 / 标题 / 表格 / 代码块…） */
-export interface FlatBlock {
-  /** 在可见文本中的起始下标 */
-  start: number;
-  /** 在可见文本中的结束下标 */
-  end: number;
-  /** 在 md 源码中的起始下标 */
-  srcStart: number;
-  /** 在 md 源码中的结束下标 */
-  srcEnd: number;
-}
-
-/** {@link MarkdownFlattener.flatten} 的返回值 */
-export interface FlatResult extends NormalizedText {
-  /** 块级切片，坐标系与 `text` 一致 */
-  blocks: FlatBlock[];
-  /** `inl[i]` = 第 i 个字符所属的最内层行内构造下标，-1 表示无 */
-  inl?: number[];
-  /** 行内构造列表，见 {@link InlineConstruct} */
-  constructs?: InlineConstruct[];
-  /**
-   * `isSep[i]` = 第 i 个字符是否是块间分隔符。
-   * 这些字符是我们插入的排版产物，跨块匹配时会被跳过。
-   */
-  isSep?: boolean[];
-}
+export type {
+  MarkdownFlattener,
+  FlatResult,
+  FlatBlock,
+  InlineConstruct,
+} from '@isdk/md-flatten';
+import type { MarkdownFlattener } from '@isdk/md-flatten';
 
 /**
  * 匹配选项。
