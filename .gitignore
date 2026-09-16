@@ -5,6 +5,9 @@ dist/
 # pnpm
 .pnpm-store/
 
+# 本地 npm 配置：含镜像地址等环境信息，不入库（各人/各环境可能不同）
+.npmrc
+
 # 不要提交 npm 的锁文件（本项目用 pnpm）
 package-lock.json
 yarn.lock
