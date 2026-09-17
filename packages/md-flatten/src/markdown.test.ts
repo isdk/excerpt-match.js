@@ -70,6 +70,73 @@ describe('★ 坐标映射：可见文本 ↔ md 源码', () => {
   });
 });
 
+describe('★ 代理对：map 与 text 必须按 code unit 对齐', () => {
+  it('map 与 text 同长（外加哨兵），emoji 后的段落不错位', () => {
+    const src = '甲👍乙。\n\n第二段内容。';
+    const r = flatten.flatten(src);
+    expect(r.map.length).toBe(r.text.length + 1);
+
+    const at = r.text.indexOf('第');
+    expect(src.slice(r.map[at], r.mapEnd?.[at] ?? r.map[at] + 1)).toBe('第');
+  });
+
+  it('emoji 占两个 code unit，两条 map 共享同一源码区间', () => {
+    const src = '甲👍乙。';
+    const r = flatten.flatten(src);
+    const at = r.text.indexOf('\u{1F44D}');
+    expect(r.map[at]).toBe(r.map[at + 1]);
+    expect(r.mapEnd?.[at]).toBe(r.mapEnd?.[at + 1]);
+    expect(src.slice(r.map[at], r.mapEnd?.[at] ?? r.map[at] + 1)).toBe('\u{1F44D}');
+  });
+
+  it('逐个字符往返：含 emoji 时每个字符仍能回切到源码', () => {
+    const src = '合议庭组成：👨‍👩‍👧‍👦 出席了庭审。\n\n书证上有 🇨🇳 与 👍🏽 两个标记。';
+    const r = flatten.flatten(src);
+    for (let i = 0; i < r.text.length; i++) {
+      if (r.text[i] === '\n') continue; // 块终止符是插入的，无对应源码
+      expect(r.map[i], `第 ${i} 个字符`).toBeLessThan(src.length);
+    }
+  });
+});
+
+describe('★ 转义与实体：一个可见字符横跨多个源码字符', () => {
+  /** 该可见字符在源码里到底占了哪一段 */
+  const srcOf = (src: string, ch: string) => {
+    const r = flatten.flatten(src);
+    const i = r.text.indexOf(ch);
+    return { i, piece: src.slice(r.map[i], r.mapEnd?.[i] ?? r.map[i] + 1), map: r.map };
+  };
+
+  it('转义 \\* 的坐标覆盖整个 `\\*`，不指向文末', () => {
+    const { piece, map } = srcOf('a \\* b', '*');
+    expect(piece).toBe('\\*');
+    // 塌陷 bug 的表征：从这里起 map 全部等于同一个值
+    expect(map.slice(0, 5)).toEqual([0, 1, 2, 4, 5]);
+  });
+
+  it('实体 &gt; 同理：&amp; 因首字符恰好是 & 而侥幸正确，掩盖了这个 bug', () => {
+    const { piece, map } = srcOf('a &gt; b', '>');
+    expect(piece).toBe('&gt;');
+    expect(map.slice(0, 5)).toEqual([0, 1, 2, 6, 7]);
+  });
+
+  it('数值实体 &#39; / &#x27; 也能正确回切', () => {
+    expect(srcOf('a &#39; b', "'").piece).toBe('&#39;');
+    expect(srcOf('a &#x27; b', "'").piece).toBe('&#x27;');
+  });
+
+  it('逐个往返：切出来的源码片段能还原出该可见字符', () => {
+    const src = '附注：定界符 \\* 与表达式 a &gt; b，详见附件。';
+    const r = flatten.flatten(src);
+    for (let i = 0; i < r.text.length; i++) {
+      if (r.text[i] === '\n') continue; // 块终止符是插入的，无对应源码
+      expect(src.slice(r.map[i], r.mapEnd?.[i] ?? r.map[i] + 1).length, `第 ${i} 个字符`).toBeGreaterThan(0);
+      // 任何字符都不该把坐标推到文末 —— 那正是级联塌陷的症状
+      expect(r.map[i]).toBeLessThan(src.length);
+    }
+  });
+});
+
 describe('isSep：块间分隔符标记（供跨块匹配）', () => {
   it('块间分隔符被标记', () => {
     const r = flatten.flatten('甲\n\n乙');
@@ -110,5 +177,28 @@ describe('正则降级版（未注入 mdast 时）', () => {
   it('基本行内标记可用', async () => {
     const { regexFlattener } = await import('./markdown');
     expect(regexFlattener.flatten('本院**认为**被告。').text.trim()).toBe('本院认为被告。');
+  });
+
+  it('与 mdast 路径一致：转义与实体都解码', async () => {
+    const { regexFlattener } = await import('./markdown');
+    expect(regexFlattener.flatten('a \\* b').text).toBe('a * b');
+    expect(regexFlattener.flatten('a &gt; b').text).toBe('a > b');
+    expect(regexFlattener.flatten('a &amp; b').text).toBe('a & b');
+  });
+
+  it('★ 转义字符的 span 覆盖整个 `\\*`，不是只到反斜杠', async () => {
+    const { regexFlattener } = await import('./markdown');
+    const src = 'a \\* b';
+    const r = regexFlattener.flatten(src);
+    const i = r.text.indexOf('*');
+    expect(src.slice(r.map[i], r.mapEnd?.[i] ?? r.map[i] + 1)).toBe('\\*');
+  });
+
+  it('★ 实体解码后，坐标仍回切到整个引用', async () => {
+    const { regexFlattener } = await import('./markdown');
+    const src = 'a &gt; b';
+    const r = regexFlattener.flatten(src);
+    const i = r.text.indexOf('>');
+    expect(src.slice(r.map[i], r.mapEnd?.[i] ?? r.map[i] + 1)).toBe('&gt;');
   });
 });

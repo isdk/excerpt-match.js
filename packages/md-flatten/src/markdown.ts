@@ -99,18 +99,71 @@ const FRONT_MATTER_RE = /^\uFEFF?---\r?\n[\s\S]*?\r?\n(?:---|\.\.\.)\r?\n?/;
 const ESCAPABLE = '!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~';
 const ENTITY_RE = /^(#[0-9]{1,7}|#[xX][0-9a-fA-F]{1,6}|[a-zA-Z][a-zA-Z0-9]{1,31});/;
 
-/** 跳过转义符 / 实体 / CR，把源码指针 p 对齐到字符 ch */
+/**
+ * 命名实体解码表。
+ *
+ * @remarks
+ * 只列 CommonMark 实际会解码的这五个（数值实体 `&#39;` / `&#x27;` 无需查表）。
+ * micromark 支持完整的 HTML 实体表，但那些生僻字形罕见，缺了它们只是退回「整体跳过」，
+ * 不会像坐标错位那样污染后续所有字符。
+ */
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+};
+
+/**
+ * 读取 p 处的实体引用。
+ *
+ * @returns `null` = 这里不是实体；`value` 为空串 = 是实体但不认识，调用方应整体跳过
+ */
+function readEntity(src: string, p: number, end: number): { value: string; endPos: number } | null {
+  const m = ENTITY_RE.exec(src.slice(p + 1, Math.min(end, p + 40)));
+  if (!m) return null;
+  const name = m[0].slice(0, -1); // 去掉末尾的 ';'
+  let value = '';
+  if (name.charCodeAt(0) === 35 /* '#' */) {
+    const isHex = name[1] === 'x' || name[1] === 'X';
+    const cp = parseInt(isHex ? name.slice(2) : name.slice(1), isHex ? 16 : 10);
+    if (Number.isInteger(cp) && cp >= 0 && cp <= 0x10ffff) value = String.fromCodePoint(cp);
+  } else {
+    value = NAMED_ENTITIES[name] ?? '';
+  }
+  return { value, endPos: Math.min(end, p + 1 + m[0].length) };
+}
+
+/** `\X` 是否是一个转义序列 */
+function isEscapeAt(src: string, p: number, end: number): boolean {
+  return src[p] === '\\' && p + 1 < end && ESCAPABLE.includes(src[p + 1]);
+}
+
+/**
+ * 跳过转义符 / 实体 / CR，把源码指针 p 对齐到字符 ch。
+ *
+ * @remarks
+ * 关键细节：转义与实体**可能生成的正是 ch 本身** —— `\*` 渲染成 `*`、
+ * `&gt;` 渲染成 `>`。若在跳过前不先比对，找目标字符时就会越过它一路跑到文末，
+ * 于是该字符起的所有坐标级联塌陷。`&amp;` 之所以历来正常，只是因为实体的首字符
+ * 恰好就是 '&'，与第一个分支撞上了而已。
+ */
 function alignTo(src: string, p: number, end: number, ch: string): number {
+  // 一律用 startsWith 比对：`ch` 可能是代理对（emoji、扩展汉字），
+  // 按 code unit 逐个比永远比不上，坐标会连带塌到段末
   while (p < end) {
-    if (src[p] === ch) return p;
-    if (src[p] === '\\' && p + 1 < end && ESCAPABLE.includes(src[p + 1])) {
+    if (src.startsWith(ch, p)) return p;
+    if (isEscapeAt(src, p, end)) {
+      if (src.startsWith(ch, p + 1)) return p; // 这个转义产生的就是要找的字符
       p += 2;
       continue;
     }
     if (src[p] === '&') {
-      const m = ENTITY_RE.exec(src.slice(p + 1, Math.min(end, p + 40)));
-      if (m) {
-        p += 1 + m[0].length;
+      const ent = readEntity(src, p, end);
+      if (ent) {
+        if (ent.value.startsWith(ch)) return p; // 这个实体解码出的首字符就是要找的字符
+        p = ent.endPos;
         continue;
       }
     }
@@ -123,14 +176,23 @@ function alignTo(src: string, p: number, end: number, ch: string): number {
   return p;
 }
 
-/** 该位置若是一个实体引用，返回它的源码结束位置 */
+/**
+ * 该位置字符的源码结束位置（不含）。
+ *
+ * @remarks
+ * 转义字符占**两个**源码字符（`\*`），实体占整个引用（`&gt;`），
+ * 代理对占两个 code unit —— 一个可见字符横跨多个源码字符，
+ * 正是这里唯一需要留心的事。
+ */
 function charEnd(src: string, p: number, end: number): number {
   if (p >= end) return p;
+  if (isEscapeAt(src, p, end)) return Math.min(end, p + 2);
   if (src[p] === '&') {
-    const m = ENTITY_RE.exec(src.slice(p + 1, Math.min(end, p + 40)));
-    if (m) return Math.min(end, p + 1 + m[0].length);
+    const ent = readEntity(src, p, end);
+    if (ent) return ent.endPos;
   }
-  return p + 1;
+  const cp = src.codePointAt(p);
+  return Math.min(end, p + (cp !== undefined && cp > 0xffff ? 2 : 1));
 }
 
 const SKIP_TYPES = new Set([
@@ -208,17 +270,33 @@ export function createMdastFlattener(fromMarkdown: FromMarkdown, options: MdastO
         cursor += 1;
       };
 
-      /** 逐字符发射一段可见文本，并在源码中精确定位 */
+      /**
+       * 逐字符发射一段可见文本，并在源码中精确定位。
+       *
+       * @remarks
+       * `map` 必须与 `text` **同长同序**（按 code unit），否则下游拿 code unit
+       * 下标去查 `map` 会整体错位 —— 代理对字符最容易踩到：
+       * 按码点写一条、按 code unit 存两个，长度就差了。
+       *
+       * 所以代理对拆成两条：两条都指向同一个源码区间，`mapEnd` 覆盖整对。
+       */
       const emitText = (value: string, from: number, to: number): void => {
         let p = from;
-        for (const ch of value) {
+        let k = 0;
+        while (k < value.length) {
+          const cp = value.codePointAt(k) as number;
+          const ch = String.fromCodePoint(cp);
+          const width = cp > 0xffff ? 2 : 1;
           p = alignTo(body, p, to, ch);
           if (p >= to) {
-            emit(ch, to, to);
+            for (let j = 0; j < width; j++) emit(value[k + j] as string, to, to);
+            k += width;
             continue;
           }
-          emit(ch, p, charEnd(body, p, to));
-          p = charEnd(body, p, to);
+          const e = charEnd(body, p, to);
+          for (let j = 0; j < width; j++) emit(value[k + j] as string, p, e);
+          p = e;
+          k += width;
         }
       };
 
@@ -387,12 +465,20 @@ export const regexFlattener: MarkdownFlattener = {
     const mapEnd: number[] = [];
     let i = 0;
 
+    const push = (ch: string, s: number, e: number): void => {
+      text.push(ch);
+      map.push(s);
+      mapEnd.push(Math.max(s, e));
+    };
+
+    /** 一段可见文本与源码逐字符对应 */
     const keep = (s: string, at: number): void => {
-      for (let k = 0; k < s.length; k++) {
-        text.push(s[k]);
-        map.push(at + k);
-        mapEnd.push(at + k + 1);
-      }
+      for (let k = 0; k < s.length; k++) push(s[k], at + k, at + k + 1);
+    };
+
+    /** 一段源码解码出的可见字符：每个字符横跨整个源码片段 */
+    const keepFrom = (value: string, srcFrom: number, srcTo: number): void => {
+      for (let k = 0; k < value.length; k++) push(value[k], Math.min(srcFrom + k, srcTo), srcTo);
     };
 
     while (i < src.length) {
@@ -433,8 +519,18 @@ export const regexFlattener: MarkdownFlattener = {
         i += m2[0].length;
         continue;
       }
+      if (src[i] === '&') {
+        // 和 mdast 路径保持一致：实体要解码，且一个可见字符横跨整个引用
+        const ent = readEntity(src, i, src.length);
+        if (ent && ent.value.length > 0) {
+          keepFrom(ent.value, i, ent.endPos);
+          i = ent.endPos;
+          continue;
+        }
+      }
       if (src[i] === '\\' && i + 1 < src.length) {
-        keep(src[i + 1], i);
+        // 转义占两个源码字符 —— 只算 `\` 的话回切会丢掉被转义的字符
+        push(src[i + 1], i, Math.min(src.length, i + 2));
         i += 2;
         continue;
       }
