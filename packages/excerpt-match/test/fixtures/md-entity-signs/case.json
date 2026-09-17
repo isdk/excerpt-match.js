@@ -1,0 +1,26 @@
+{
+  "description": "md-entity-signs：一个可见字符可横跨多个源码字符，mapEnd 不可由 map 推算",
+  "cases": [
+    {
+      "name": "&amp; 渲染成 & —— 可见文本短，源码长",
+      "excerpt": "原告交付的货物为 A&B 型",
+      "expect": {
+        "hit": true,
+        "kind": "exact",
+        "visible": "原告交付的货物为 A&B 型",
+        "span": { "$contains": "A&amp;B" },
+        "$expr": "actual.length > actual.visible.length"
+      }
+    },
+    {
+      "name": "实体之后的正文坐标依然准确 —— 对接 alignTo 的正确实现",
+      "excerpt": "对此，双方均无异议。",
+      "expect": {
+        "hit": true,
+        "line": 3,
+        "visible": "对此，双方均无异议。",
+        "span": "对此，双方均无异议。"
+      }
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "description": "t2-segment-gap-and-min-length：分段锚点的两个护栏 —— 太短的碎片与太宽的间隔",
+  "doc": "doc.txt",
+  "cases": [
+    {
+      "name": "默认 maxGap 为 Infinity：隔多远都能接上",
+      "excerpt": "本院受理本案。……经审理查明被告违约。",
+      "expect": { "hit": true, "kind": "segmented" }
+    },
+    {
+      "name": "maxGap 收紧后，间隔超限 → none",
+      "excerpt": "本院受理本案。……经审理查明被告违约。",
+      "options": { "maxGap": 5 },
+      "expect": { "hit": false, "kind": "none" }
+    },
+    {
+      "name": "minSegmentLength 默认 4：两字锚点太短 → none",
+      "excerpt": "本院……被告违约。",
+      "expect": { "hit": false, "kind": "none" }
+    },
+    {
+      "name": "把 minSegmentLength 降到 2 后同一个摘录命中（短锚点散布全篇，慎用）",
+      "excerpt": "本院……被告违约。",
+      "options": { "minSegmentLength": 2 },
+      "expect": { "hit": true, "kind": "segmented" }
+    }
+  ]
+}

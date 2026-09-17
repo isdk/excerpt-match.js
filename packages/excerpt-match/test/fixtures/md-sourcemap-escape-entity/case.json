@@ -1,0 +1,36 @@
+{
+  "description": "md-sourcemap-escape-entity：转义与「非 & 开头实体」的源码坐标回切",
+  "cases": [
+    {
+      "name": "对照组：缺陷字符之前的段落坐标正常",
+      "excerpt": "原告交付了一批货物。",
+      "expect": {
+        "hit": true,
+        "visible": "原告交付了一批货物。",
+        "span": "原告交付了一批货物。"
+      }
+    },
+    {
+      "name": "反斜杠转义 \\* 渲染成字面 *，且后续坐标不应塌陷",
+      "excerpt": "本案涉及特殊定界符 *",
+      "expect": {
+        "hit": true,
+        "visible": "本案涉及特殊定界符 *",
+        "span": {
+          "$contains": "\\*"
+        }
+      }
+    },
+    {
+      "name": "非 & 开头的实体（&gt;）同样应正确回切",
+      "excerpt": "表达式 a > b",
+      "expect": {
+        "hit": true,
+        "visible": "表达式 a > b",
+        "span": {
+          "$contains": "&gt;"
+        }
+      }
+    }
+  ]
+}

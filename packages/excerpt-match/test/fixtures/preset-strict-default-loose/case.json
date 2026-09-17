@@ -1,0 +1,57 @@
+{
+  "description": "preset-strict-default-loose：同一摘录在三档预设下的结论差异",
+  "cases": [
+    {
+      "name": "default：允许跨块 —— 跨两段的摘录能命中",
+      "excerpt": "本院认为，被告的行为已经构成根本违约，应当承担违约责任。经审理查明，被告未按约定的期限交付货物。",
+      "options": { "preset": "default" },
+      "expect": {
+        "hit": true,
+        "crossesBlocks": true,
+        "visible": {
+          "$and": [
+            { "$contains": "应当承担违约责任。" },
+            { "$contains": "经审理查明" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "strict：引用不该跨段 —— 同一摘录转为 none",
+      "excerpt": "本院认为，被告的行为已经构成根本违约，应当承担违约责任。经审理查明，被告未按约定的期限交付货物。",
+      "options": { "preset": "strict" },
+      "expect": {
+        "hit": false,
+        "kind": "none"
+      }
+    },
+    {
+      "name": "loose：同样允许跨块，且 score 仍是 1（字面等价）",
+      "excerpt": "本院认为，被告的行为已经构成根本违约，应当承担违约责任。经审理查明，被告未按约定的期限交付货物。",
+      "options": { "preset": "loose" },
+      "expect": {
+        "hit": true,
+        "crossesBlocks": true,
+        "score": 1
+      }
+    },
+    {
+      "name": "strip 与 default 的差别之一：省略号分段只在 default/loose 生效",
+      "excerpt": "本院认为，……经审理查明",
+      "options": { "preset": "strict" },
+      "expect": { "hit": false, "kind": "none" }
+    },
+    {
+      "name": "allowCrossBlock 与 maxCrossBlocks 是两个独立开关 —— 只覆盖后者不生效",
+      "excerpt": "本院认为，被告的行为已经构成根本违约，应当承担违约责任。经审理查明，被告未按约定的期限交付货物。",
+      "options": { "preset": "strict", "maxCrossBlocks": 2 },
+      "expect": { "hit": false, "kind": "none" }
+    },
+    {
+      "name": "显式项覆盖预设：两个都覆盖后 strict 也能跨块",
+      "excerpt": "本院认为，被告的行为已经构成根本违约，应当承担违约责任。经审理查明，被告未按约定的期限交付货物。",
+      "options": { "preset": "strict", "allowCrossBlock": true, "maxCrossBlocks": 2 },
+      "expect": { "hit": true, "crossesBlocks": true }
+    }
+  ]
+}

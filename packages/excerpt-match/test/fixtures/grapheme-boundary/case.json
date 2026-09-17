@@ -1,0 +1,32 @@
+{
+  "description": "grapheme-boundary：ZWJ 家庭 / 区旗 / 肤色修饰符都算一个簇，span 不能切在簇中间",
+  "cases": [
+    {
+      "name": "ZWJ 家庭 emoji 整体命中，不被切成四个人",
+      "excerpt": "合议庭组成：👨‍👩‍👧‍👦 出席了庭审。",
+      "expect": {
+        "hit": true,
+        "visible": "合议庭组成：👨‍👩‍👧‍👦 出席了庭审。",
+        "span": { "$contains": "👨‍👩‍👧‍👦" }
+      }
+    },
+    {
+      "name": "span 的起点不能落在 ZWJ / 变体选择符 / 肤色修饰符上",
+      "excerpt": "书证上有 🇨🇳 与 👍🏽 两个标记。",
+      "expect": {
+        "hit": true,
+        "visible": "书证上有 🇨🇳 与 👍🏽 两个标记。",
+        "$expr": "actual.index < 0 || !/^[\\u200D\\uFE0F\\uD83C\\uDFFB-\\uD83C\\uDFFF]/.test(actual.span)"
+      }
+    },
+    {
+      "name": "以 emoji 开头的摘录：起点同样对齐到簇首",
+      "excerpt": "👨‍👩‍👧‍👦 出席了庭审。",
+      "expect": {
+        "hit": true,
+        "span": { "$contains": "👨‍👩‍👧‍👦" },
+        "$expr": "actual.index < 0 || !/^[\\u200D\\uFE0F]/.test(actual.span)"
+      }
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "description": "md-blocks-table-gfm：表格 / 块引用 / 列表 / HTML 注释 / 图片的摊平取舍",
+  "cases": [
+    {
+      "name": "表格：摘录「张三 李四」能命中 | 张三 | 李四 |",
+      "excerpt": "张三 李四",
+      "expect": {
+        "hit": true,
+        "visible": { "$and": [{ "$contains": "张三" }, { "$contains": "李四" }] },
+        "span": { "$and": [{ "$contains": "张三" }, { "$contains": "李四" }] }
+      }
+    },
+    {
+      "name": "块引用：正文保留，「> 」不含在可见文本里",
+      "excerpt": "依照《中华人民共和国民法典》第五百七十七条之规定。",
+      "expect": {
+        "hit": true,
+        "visible": "依照《中华人民共和国民法典》第五百七十七条之规定。"
+      }
+    },
+    {
+      "name": "图片的 alt 不进文本 —— 渲染成 <img>，用户复制不到",
+      "excerpt": "现场照片",
+      "expect": {
+        "hit": false,
+        "kind": "none"
+      }
+    },
+    {
+      "name": "HTML 注释属于源码而非页面内容",
+      "excerpt": "转换工具注释",
+      "expect": {
+        "hit": false,
+        "kind": "none"
+      }
+    },
+    {
+      "name": "图片后的文字仍然可命中",
+      "excerpt": "以上事实，有合同原件为证。",
+      "expect": {
+        "hit": true,
+        "visible": "以上事实，有合同原件为证。"
+      }
+    }
+  ]
+}

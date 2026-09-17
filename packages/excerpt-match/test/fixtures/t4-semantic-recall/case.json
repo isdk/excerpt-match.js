@@ -1,0 +1,33 @@
+{
+  "description": "t4-semantic-recall：外部召回 + 段内确定性再对齐，不让模型直接吐字符下标",
+  "use": ["semantic", "dmp"],
+  "cases": [
+    {
+      "name": "句式变换的同义摘录 → semantic，坐标落在该段内而非全页",
+      "excerpt": "合同可以通过要约与承诺来订立",
+      "expect": {
+        "hit": true,
+        "kind": "semantic",
+        "via": "semantic",
+        "span": { "$contains": "要约与承诺" },
+        "line": 3
+      }
+    },
+    {
+      "name": "不传 aligner 退化为高亮整段并降分（via: semantic:segment）",
+      "excerpt": "合同可以通过要约与承诺来订立",
+      "use": ["semantic"],
+      "expect": {
+        "hit": true,
+        "kind": "semantic",
+        "via": "semantic:segment"
+      }
+    },
+    {
+      "name": "minRecallScore 抬高 → 召回阶段就判 none",
+      "excerpt": "合同可以通过要约与承诺来订立",
+      "options": { "minRecallScore": 0.99 },
+      "expect": { "hit": false, "kind": "none" }
+    }
+  ]
+}

@@ -23,24 +23,24 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@isdk/approx-text-match": "workspace:*",
+    "@isdk/identifier-variants": "workspace:*",
+    "@isdk/md-flatten": "workspace:*",
     "@isdk/normalize-text": "workspace:*",
+    "@isdk/semantic-locate": "workspace:*",
+    "@isdk/whitespace-semantics": "workspace:*",
     "@isdk/zh-negation": "workspace:*",
     "@isdk/zh-particles": "workspace:*",
-    "@isdk/whitespace-semantics": "workspace:*",
-    "@isdk/md-flatten": "workspace:*",
-    "@isdk/approx-text-match": "workspace:*",
-    "@isdk/semantic-locate": "workspace:*",
-    "@isdk/identifier-variants": "workspace:*",
     "secondary-cache": "^2.1.2"
   },
   "peerDependencies": {
+    "@isdk/nlp-jieba": "^2.2.2",
+    "cjk-number": ">=0.2.0",
     "diff-match-patch": "^1.0.5",
+    "diff-match-patch-es": "^2.0.1",
     "mdast-util-from-markdown": "^2.0.2",
     "mdast-util-gfm": "^3.0.0",
-    "micromark-extension-gfm": "^3.0.0",
-    "diff-match-patch-es": "^2.0.1",
-    "@isdk/nlp-jieba": "^2.2.2",
-    "cjk-number": ">=0.2.0"
+    "micromark-extension-gfm": "^3.0.0"
   },
   "peerDependenciesMeta": {
     "diff-match-patch": {
@@ -66,6 +66,7 @@
     }
   },
   "devDependencies": {
+    "@isdk/match-ex": "^0.1.2",
     "@isdk/nlp-jieba": "^2.2.2",
     "@types/diff-match-patch": "^1.0.32",
     "@types/node": "^20.11.0",

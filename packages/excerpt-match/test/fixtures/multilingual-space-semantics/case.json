@@ -1,0 +1,31 @@
+{
+  "description": "multilingual-space-semantics：删掉它会不会造成边界歧义，是本库删空格的唯一判据",
+  "doc": "doc.txt",
+  "cases": [
+    {
+      "name": "日文：字间空格可删",
+      "excerpt": "日本語の機械学習の応用は広がっている。",
+      "expect": { "hit": true, "score": 1 }
+    },
+    {
+      "name": "韩文：空格载义 —— 删了会改变归属，必须拒绝",
+      "excerpt": "아버지가방에들어가신다.",
+      "expect": { "hit": false, "kind": "none" }
+    },
+    {
+      "name": "拉丁：词分隔符同理不可删",
+      "excerpt": "Thecourt held that the defendant breached.",
+      "expect": { "hit": false, "kind": "none" }
+    },
+    {
+      "name": "跨文字边界的空格是排版产物，可以删",
+      "excerpt": "하여TensorFlow사용 optimum.",
+      "expect": { "hit": true, "score": 1 }
+    },
+    {
+      "name": "同一文字内部的空格即便两侧不同也不能删",
+      "excerpt": "하여 Tensor Flow 사용 optimum.",
+      "expect": { "hit": false, "kind": "none" }
+    }
+  ]
+}

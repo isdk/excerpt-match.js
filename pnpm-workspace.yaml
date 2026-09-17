@@ -9,3 +9,6 @@ packages:
 # pnpm 12 起用 allowBuilds（布尔值）替代 onlyBuiltDependencies（数组）。
 allowBuilds:
   esbuild: true
+
+minimumReleaseAgeExclude:
+  - '@isdk/match-ex@0.1.1 || 0.1.2'

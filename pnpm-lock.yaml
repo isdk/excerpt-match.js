@@ -258,6 +258,9 @@ importers:
         specifier: ^2.1.2
         version: 2.1.2
     devDependencies:
+      '@isdk/match-ex':
+        specifier: ^0.1.2
+        version: 0.1.2
       '@isdk/nlp-jieba':
         specifier: ^2.2.2
         version: 2.2.2
@@ -714,6 +717,9 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  '@isdk/match-ex@0.1.2':
+    resolution: {integrity: sha512-LN7gfkEQu4SQnjkEFORcNfZLh2E9Ru3dsVTGHCvqp+FsM7djqiINxciMzk+3iHI0OrrvnxKyxmlhxKdaiydquQ==}
+
   '@isdk/nlp-jieba@2.2.2':
     resolution: {integrity: sha512-nQzWTjcMenIqed+5NWLpY56jpfLYb7UxVGUBtlTP249i6RsrNGDtCQrCNN3GjbbEY9d0ijR2de23SUg3SEaBSQ==}
 
@@ -1021,6 +1027,10 @@ packages:
     resolution: {integrity: sha512-EjePK1srD3P08o2j4f0ExnylqRs5B9tJjcp9t1krH2qRi8CCdsYfwe9JgSLurFBWwq4uOlipzfk5fHNvwFKr8Q==}
     engines: {node: ^14.15.0 || ^16.10.0 || >=18.0.0}
 
+  diff@9.0.0:
+    resolution: {integrity: sha512-svtcdpS8CgJyqAjEQIXdb3OjhFVVYjzGAPO8WGCmRbrml64SPw/jJD4GoE98aR7r25A0XcgrK3F02yw9R/vhQw==}
+    engines: {node: '>=0.3.1'}
+
   esbuild@0.21.5:
     resolution: {integrity: sha512-mg3OPMV4hXywwpoDxu3Qda5xCKQi+vCTZq8S9J/EpkhB2HzKXq4SNFZE3+NK93JYxc8VMSep+lOUSC/RVKaBqw==}
     engines: {node: '>=12'}
@@ -1109,6 +1119,9 @@ packages:
   local-pkg@0.5.1:
     resolution: {integrity: sha512-9rrA30MRRP3gBD3HTGnC6cDFpaE1kVDWxWgqWJUN0RvDNAo+Nz/9GxB+nHOH0ifbVFy0hSA1V6vFDvnx54lTEQ==}
     engines: {node: '>=14'}
+
+  lodash-es@4.18.1:
+    resolution: {integrity: sha512-J8xewKD/Gk22OZbhpOVSwcs60zhd95ESDwezOFuA3/099925PdHJ7OFHNTGtajL3AlZkykD32HykiMo+BIBI8A==}
 
   longest-streak@3.1.0:
     resolution: {integrity: sha512-9Ri+o0JYgehTaVBBDoMqIl8GXtbWg711O3srftcHhZ0dqnETqLaoIK0x17fUw9rFSlK/0NlsKe0Ahhyl5pXE2g==}
@@ -1705,6 +1718,12 @@ snapshots:
   '@esbuild/win32-x64@0.27.7':
     optional: true
 
+  '@isdk/match-ex@0.1.2':
+    dependencies:
+      diff: 9.0.0
+      lodash-es: 4.18.1
+      util-ex: 2.7.1
+
   '@isdk/nlp-jieba@2.2.2': {}
 
   '@jest/schemas@29.6.3':
@@ -1945,6 +1964,8 @@ snapshots:
 
   diff-sequences@29.6.3: {}
 
+  diff@9.0.0: {}
+
   esbuild@0.21.5:
     optionalDependencies:
       '@esbuild/aix-ppc64': 0.21.5
@@ -2066,6 +2087,8 @@ snapshots:
     dependencies:
       mlly: 1.8.2
       pkg-types: 1.3.1
+
+  lodash-es@4.18.1: {}
 
   longest-streak@3.1.0: {}
 

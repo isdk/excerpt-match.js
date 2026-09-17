@@ -1,0 +1,49 @@
+{
+  "description": "md-inline-markers：摘录来自渲染后页面，coord 回切到含语法标记的源码",
+  "cases": [
+    {
+      "name": "可见文本不含 ** 与链接地址，但 span 两者都含",
+      "excerpt": "本院认为，被告的行为已经构成根本违约，应当承担违约责任。",
+      "expect": {
+        "hit": true,
+        "kind": "exact",
+        "visible": "本院认为，被告的行为已经构成根本违约，应当承担违约责任。",
+        "span": {
+          "$and": [
+            { "$contains": "**被告**" },
+            { "$contains": "[根本违约](http://a.b/c)" }
+          ]
+        },
+        "line": 3
+      }
+    },
+    {
+      "name": "span 补齐完整的行内标记，不切在标记中间",
+      "excerpt": "被告",
+      "expect": {
+        "hit": true,
+        "span": "**被告**",
+        "visible": "被告",
+        "length": { "$gt": 2 }
+      }
+    },
+    {
+      "name": "只取行内构造的一部分时，宁可精确也不追求可渲染",
+      "excerpt": "根本违约",
+      "expect": {
+        "hit": true,
+        "visible": "根本违约",
+        "span": { "$contains": "[根本违约](http://a.b/c)" }
+      }
+    },
+    {
+      "name": "trimMarkdownEdges 会把刚补齐的标记又剪掉",
+      "excerpt": "被告",
+      "options": { "trimMarkdownEdges": true, "expandMarkers": false },
+      "expect": {
+        "hit": true,
+        "span": "被告"
+      }
+    }
+  ]
+}

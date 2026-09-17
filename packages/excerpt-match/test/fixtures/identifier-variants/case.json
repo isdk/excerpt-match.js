@@ -1,0 +1,34 @@
+{
+  "description": "identifier-variants：只拆不合，两个开关默认都关闭",
+  "doc": "doc.txt",
+  "cases": [
+    {
+      "name": "默认关闭：TensorFlow ≠ Tensor Flow",
+      "excerpt": "本项目使用 Tensor Flow 框架进行训练。",
+      "expect": { "hit": false, "kind": "none" }
+    },
+    {
+      "name": "splitCamelCase：驼峰拆成带空格后即可命中",
+      "excerpt": "本项目使用 Tensor Flow 框架进行训练。",
+      "options": { "splitCamelCase": true },
+      "expect": { "hit": true, "kind": "normalized" }
+    },
+    {
+      "name": "默认关闭：hello_world ≠ hello world",
+      "excerpt": "配置项 hello world 需要显式声明。",
+      "expect": { "hit": false, "kind": "none" }
+    },
+    {
+      "name": "normalizeIdentifierSeparators：下划线视作空格后即可命中",
+      "excerpt": "配置项 hello world 需要显式声明。",
+      "options": { "normalizeIdentifierSeparators": true },
+      "expect": { "hit": true, "kind": "normalized" }
+    },
+    {
+      "name": "汉字两侧不拆：北京-上海 不会被并成「北京上海」",
+      "excerpt": "北京上海是线路。",
+      "options": { "normalizeIdentifierSeparators": true },
+      "expect": { "hit": false, "kind": "none" }
+    }
+  ]
+}

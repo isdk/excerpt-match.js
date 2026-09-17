@@ -1,0 +1,56 @@
+{
+  "description": "t2-ellipsis-segmented：摘录自带省略号时按分段锚点链定位",
+  "doc": "doc.txt",
+  "cases": [
+    {
+      "name": "「……」跳过中间内容，两端锚点各自命中 → segmented",
+      "excerpt": "本院认为，……应当承担违约责任",
+      "expect": {
+        "hit": true,
+        "kind": "segmented",
+        "score": 1,
+        "span": "本院认为，被告的行为已经构成根本违约，应当承担违约责任",
+        "visible": "本院认为，被告的行为已经构成根本违约，应当承担违约责任"
+      }
+    },
+    {
+      "name": "三个以上句点同样是省略号",
+      "excerpt": "被告的行为……原告损失",
+      "expect": {
+        "hit": true,
+        "kind": "segmented"
+      }
+    },
+    {
+      "name": "strict 档关闭分段锚点 → none",
+      "excerpt": "本院认为，……应当承担违约责任",
+      "options": { "preset": "strict" },
+      "expect": {
+        "hit": false,
+        "kind": "none"
+      }
+    },
+    {
+      "name": "自定义省略号：默认模式不含「〔中略〕」→ none",
+      "excerpt": "本院认为，〔中略〕应当承担违约责任",
+      "expect": {
+        "hit": false,
+        "kind": "none"
+      }
+    },
+    {
+      "name": "自定义省略号：显式声明后命中 → segmented",
+      "excerpt": "本院认为，〔中略〕应当承担违约责任",
+      "options": {
+        "ellipsis": [
+          "〔中略〕",
+          { "regex": "\\[\\s*snip\\s*\\]", "flags": "i" }
+        ]
+      },
+      "expect": {
+        "hit": true,
+        "kind": "segmented"
+      }
+    }
+  ]
+}

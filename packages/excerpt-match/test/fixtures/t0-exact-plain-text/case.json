@@ -1,0 +1,40 @@
+{
+  "description": "t0-exact-plain-text：纯文本基线，逐字命中 exact 与未命中 none",
+  "doc": "doc.txt",
+  "cases": [
+    {
+      "name": "逐字相同的摘录 → exact，坐标就是原文本身",
+      "excerpt": "本院认为，被告的行为已经构成根本违约，应当承担违约责任。",
+      "expect": {
+        "hit": true,
+        "kind": "exact",
+        "score": 1,
+        "occurrences": 1,
+        "span": "本院认为，被告的行为已经构成根本违约，应当承担违约责任。",
+        "visible": "本院认为，被告的行为已经构成根本违约，应当承担违约责任。"
+      }
+    },
+    {
+      "name": "字面不存在的摘录 → none，返回 NO_MATCH 的确切形状",
+      "excerpt": "本院认为，被告应当承担刑事责任。",
+      "expect": {
+        "hit": false,
+        "kind": "none",
+        "index": -1,
+        "length": 0,
+        "score": 0,
+        "occurrences": 0
+      }
+    },
+    {
+      "name": "短摘录多处出现 → 取第一处，occurrences 报出歧义",
+      "excerpt": "被告",
+      "expect": {
+        "hit": true,
+        "kind": "exact",
+        "occurrences": { "$gte": 2 },
+        "index": 12
+      }
+    }
+  ]
+}

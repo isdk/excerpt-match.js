@@ -1,0 +1,40 @@
+{
+  "description": "md-punct-folded：区分「严格命中」与「靠忽略标点才命中」",
+  "options": { "ignorePunctuation": true },
+  "cases": [
+    {
+      "name": "标点完全一致 —— exact 就能命中，未经标点折叠",
+      "excerpt": "本院认为，被告的行为已经构成根本违约，应当承担违约责任。",
+      "expect": {
+        "hit": true,
+        "kind": "exact",
+        "punctFolded": false
+      }
+    },
+    {
+      "name": "摘录完全没有标点 —— 靠忽略标点才匹配上，需人工复核",
+      "excerpt": "本院认为被告的行为已经构成根本违约应当承担违约责任",
+      "expect": {
+        "hit": true,
+        "kind": "normalized",
+        "punctFolded": true
+      }
+    },
+    {
+      "name": "标点互换同样算跨越差异",
+      "excerpt": "本院认为。被告的行为已经构成根本违约。应当承担违约责任。",
+      "expect": {
+        "hit": true,
+        "punctFolded": true
+      }
+    },
+    {
+      "name": "宽度差异不算 —— 由 ignoreWidth 处理，属 T1 常规归一",
+      "excerpt": "本院认为,被告的行为已经构成根本违约,应当承担违约责任.",
+      "expect": {
+        "hit": true,
+        "punctFolded": false
+      }
+    }
+  ]
+}

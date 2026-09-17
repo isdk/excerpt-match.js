@@ -1,0 +1,33 @@
+{
+  "description": "t1-normalized-fold：千分位、全角标点、CJK 边界空格、大小写的无损归一",
+  "doc": "doc.txt",
+  "cases": [
+    {
+      "name": "千分位「1,000」与全角「2，500」都和阿拉伯数字等价",
+      "excerpt": "赔偿金额为1000元，另有全角写法2500元。",
+      "expect": {
+        "hit": true,
+        "kind": "normalized",
+        "score": 1,
+        "visible": "赔偿金额为 1,000 元，另有全角写法 2，500 元。"
+      }
+    },
+    {
+      "name": "跨文字界空格可删，Latin 词间空格保留",
+      "excerpt": "Machine Learning在司法领域的应用日益广泛。",
+      "expect": {
+        "hit": true,
+        "kind": { "$in": ["exact", "normalized"] },
+        "score": 1
+      }
+    },
+    {
+      "name": "大小写差异由 ignoreCase 吸收",
+      "excerpt": "machine learning 在司法领域的应用日益广泛。",
+      "expect": {
+        "hit": true,
+        "score": 1
+      }
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "description": "md-excerpt-is-markdown：摘录默认来自渲染后页面，来自源码时要显式声明",
+  "options": { "excerptIsMarkdown": true },
+  "cases": [
+    {
+      "name": "摘录带 ** 与 [](url) —— 声明后两侧同样摊平，命中且 span 是源码",
+      "excerpt": "本院认为，**被告**的行为已经构成[根本违约](http://a.b/c)",
+      "expect": {
+        "hit": true,
+        "kind": "normalized",
+        "span": { "$and": [{ "$contains": "**被告**" }, { "$contains": "[根本违约](http://a.b/c)" }] },
+        "visible": "本院认为，被告的行为已经构成根本违约"
+      }
+    },
+    {
+      "name": "不声明就按渲染后文本理解 —— 语法标记当成字面内容，必然 none",
+      "excerpt": "本院认为，**被告**的行为已经构成[根本违约](http://a.b/c)",
+      "options": { "excerptIsMarkdown": false },
+      "expect": { "hit": false, "kind": "none" }
+    },
+    {
+      "name": "摘录本来就是纯文本时，这个开关无害 —— 摊平纯文本等于原样",
+      "excerpt": "本院认为，被告的行为已经构成根本违约，应当承担违约责任。",
+      "expect": { "hit": true, "kind": "normalized", "score": 1 }
+    }
+  ]
+}

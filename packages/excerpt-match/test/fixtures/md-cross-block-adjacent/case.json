@@ -1,0 +1,46 @@
+{
+  "description": "md-cross-block-adjacent：用户跨段复制时不带换行，且不跳过中间的段",
+  "cases": [
+    {
+      "name": "相邻两段的摘录不带换行 → 仍命中，且标记 crossesBlocks",
+      "excerpt": "本院受理本案后，依法组成合议庭，公开开庭进行了审理。经审理查明，被告未按合同约定的期限交付货物。",
+      "expect": {
+        "hit": true,
+        "crossesBlocks": true,
+        "kind": "exact",
+        "visible": {
+          "$and": [
+            { "$contains": "公开开庭进行了审理。" },
+            { "$contains": "经审理查明" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "maxCrossBlocks: 1 完全禁止跨块 → none",
+      "excerpt": "本院受理本案后，依法组成合议庭，公开开庭进行了审理。经审理查明，被告未按合同约定的期限交付货物。",
+      "options": { "maxCrossBlocks": 1 },
+      "expect": {
+        "hit": false,
+        "kind": "none"
+      }
+    },
+    {
+      "name": "隔了整段的摘录不算跨块 —— 那是省略号场景（T2）",
+      "excerpt": "本院受理本案后，依法组成合议庭，公开开庭进行了审理。本院认为，被告的行为已经构成违约，应当承担违约责任。",
+      "expect": {
+        "hit": false,
+        "kind": "none"
+      }
+    },
+    {
+      "name": "带上省略号后，隔段摘录转为分段锚点命中",
+      "excerpt": "本院受理本案后……本院认为，被告的行为已经构成违约",
+      "expect": {
+        "hit": true,
+        "kind": "segmented",
+        "crossesBlocks": true
+      }
+    }
+  ]
+}

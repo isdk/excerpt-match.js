@@ -1,0 +1,33 @@
+{
+  "description": "cjk-numerals：换数词系统默认关闭 —— 那是异文收敛，假命中的来源",
+  "doc": "doc.txt",
+  "use": ["cjk"],
+  "cases": [
+    {
+      "name": "开启后：汉字数词与阿拉伯数字等价",
+      "excerpt": "被告应支付赔偿金1200元。",
+      "expect": {
+        "hit": true,
+        "kind": "normalized",
+        "visible": "被告应支付赔偿金一千二百元。"
+      }
+    },
+    {
+      "name": "默认关闭：同一摘录 → none（也不是 TOCTOU，是刻意保守）",
+      "excerpt": "被告应支付赔偿金1200元。",
+      "use": [],
+      "expect": { "hit": false, "kind": "none" }
+    },
+    {
+      "name": "连续进位同样能解析",
+      "excerpt": "另有未交付货物12345件。",
+      "expect": { "hit": true, "score": 1 }
+    },
+    {
+      "name": "字面上完全一致的摘录不受开关影响",
+      "excerpt": "被告应支付赔偿金一千二百元。",
+      "use": [],
+      "expect": { "hit": true, "kind": "exact" }
+    }
+  ]
+}

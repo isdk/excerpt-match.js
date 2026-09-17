@@ -1,0 +1,35 @@
+{
+  "description": "guard-polarity-reject：字符相似度区分不了「少个虚词」和「多个否定词」",
+  "doc": "doc.txt",
+  "use": ["dmp"],
+  "cases": [
+    {
+      "name": "语义等价：少个虚词，字面重叠高 → fuzzy 接受",
+      "excerpt": "人工智能在改变世界",
+      "expect": {
+        "hit": true,
+        "kind": "fuzzy",
+        "score": { "$gte": 0.8 },
+        "via": "/diff/i"
+      }
+    },
+    {
+      "name": "语义相反：多一个否定词，分数也高 → 被极性守卫拦下",
+      "excerpt": "人工智能没在改变世界",
+      "expect": {
+        "hit": false,
+        "kind": "none",
+        "score": 0
+      }
+    },
+    {
+      "name": "关掉 checkPolarity 后，语义相反的摘录也会命中 —— 守卫是这道开关",
+      "excerpt": "人工智能没在改变世界",
+      "options": { "checkPolarity": false },
+      "expect": {
+        "hit": true,
+        "kind": "fuzzy"
+      }
+    }
+  ]
+}

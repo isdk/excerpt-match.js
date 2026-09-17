@@ -1,0 +1,36 @@
+{
+  "description": "t3-fuzzy-threshold：错字/漏字交给外部匹配器，minFallbackScore 是可调闸门",
+  "doc": "doc.txt",
+  "use": ["dmp"],
+  "cases": [
+    {
+      "name": "摘录漏字（本违约 ← 根本违约）→ fuzzy 命中并给出分数",
+      "excerpt": "本院认为，被告的行为已经构成本违约，应当承担违约责任。",
+      "expect": {
+        "hit": true,
+        "kind": "fuzzy",
+        "score": { "$and": [{ "$gte": 0.75 }, { "$lt": 1 }] },
+        "via": "/diff/i",
+        "visible": "本院认为，被告的行为已经构成根本违约，应当承担违约责任。"
+      }
+    },
+    {
+      "name": "抬高 minFallbackScore 到 0.99 → 同一个摘录转为 none",
+      "excerpt": "本院认为，被告的行为已经构成本违约，应当承担违约责任。",
+      "options": { "minFallbackScore": 0.99 },
+      "expect": {
+        "hit": false,
+        "kind": "none"
+      }
+    },
+    {
+      "name": "不注入 fallbacks 时绝不发生模糊匹配 —— T0–T2 之外一律 none",
+      "excerpt": "本院认为，被告的行为已经构成本违约，应当承担违约责任。",
+      "use": [],
+      "expect": {
+        "hit": false,
+        "kind": "none"
+      }
+    }
+  ]
+}

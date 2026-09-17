@@ -1,0 +1,5 @@
+本项目使用 TensorFlow 框架进行训练。
+
+配置项 hello_world 需要显式声明。
+
+函数 HelloWorld 是入口，北京-上海是线路。

@@ -1,0 +1,37 @@
+{
+  "description": "zh-particles-jieba：的/地/得 作助词时可折叠，作实词时绝不折叠",
+  "doc": "doc.txt",
+  "use": ["jieba"],
+  "cases": [
+    {
+      "name": "助词混用：「高兴地」←「高兴的」，词性感知下接受",
+      "excerpt": "他高兴的接受了调解。",
+      "expect": {
+        "hit": true,
+        "kind": "normalized",
+        "visible": "他高兴地接受了调解。"
+      }
+    },
+    {
+      "name": "不折叠时会怎样：同一摘录 → none",
+      "excerpt": "他高兴的接受了调解。",
+      "use": [],
+      "expect": { "hit": false, "kind": "none" }
+    },
+    {
+      "name": "实词拒绝：「大地」≠「大的」，不能折叠",
+      "excerpt": "辽阔的大的孕育万物。",
+      "expect": { "hit": false, "kind": "none" }
+    },
+    {
+      "name": "实词拒绝：「值得」≠「值的」",
+      "excerpt": "值的信赖的合作伙伴选择了我们。",
+      "expect": { "hit": false, "kind": "none" }
+    },
+    {
+      "name": "实词拒绝：「土地」≠「土的」",
+      "excerpt": "这片土的权属清晰。",
+      "expect": { "hit": false, "kind": "none" }
+    }
+  ]
+}
