@@ -63,6 +63,14 @@ export {
   createDmpEsFallback,
 } from './fuzzyMatch';
 export { locateSemantic } from './semanticMatch';
+export {
+  createExcerptVerifier,
+  verifyExcerptFromPage,
+  locateExcerptFromPage,
+} from './excerptVerifier';
+export type {
+  ExcerptVerification, ExcerptVerifier, ExcerptVerifierOptions,
+} from './excerptVerifier';
 
 // #endregion
 

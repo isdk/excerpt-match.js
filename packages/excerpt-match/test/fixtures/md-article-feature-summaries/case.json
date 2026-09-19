@@ -1,0 +1,145 @@
+{
+  "description": "md-article-feature-summaries：真实长文（React 18 新特性）里逐条特性摘要的复现定位",
+  "cases": [
+    {
+      "name": "Render API：新 root API 支持并发渲染",
+      "excerpt": "React 18 引入了一个新的 root API，新的 root API 还支持 new concurrent renderer（并发模式的渲染），它允许你进入 concurrent mode（并发模式）。",
+      "expect": {
+        "hit": true,
+        "kind": "normalized",
+        "score": 1,
+        "line": 49,
+        "crossesBlocks": false,
+        "visible": { "$contains": "引入了一个新的 root API" }
+      }
+    },
+    {
+      "name": "drop 档：删到只剩文字骨架，同一条摘要照样命中",
+      "excerpt": "React 18 引入了一个新的 root API，新的 root API 还支持 new concurrent renderer（并发模式的渲染），它允许你进入 concurrent mode（并发模式）。",
+      "options": { "ignorePunctuation": "drop" },
+      "expect": { "hit": true, "kind": "normalized", "score": 1, "line": 49 }
+    },
+    {
+      "name": "symbols 档：把符号类也算标点，结果与默认一致（这条不涉及符号差异）",
+      "excerpt": "React 18 引入了一个新的 root API，新的 root API 还支持 new concurrent renderer（并发模式的渲染），它允许你进入 concurrent mode（并发模式）。",
+      "options": { "ignorePunctuation": { "symbols": true } },
+      "expect": { "hit": true, "kind": "normalized", "score": 1, "line": 49 }
+    },
+    {
+      "name": "自动批处理：默认批处理带来开箱即用的性能改进",
+      "excerpt": "React 18 通过在默认情况下执行批处理来实现了开箱即用的性能改进。",
+      "expect": {
+        "hit": true,
+        "kind": "exact",
+        "score": 1,
+        "line": 152,
+        "visible": "React 18 通过在默认情况下执行批处理来实现了开箱即用的性能改进。"
+      }
+    },
+    {
+      "name": "flushSync：正文收尾是冒号，须忽略标点才命中；span 落在 flushSync（冒号已被折叠且属末尾，不入 span）",
+      "excerpt": "批处理是一个破坏性改动，如果你想退出批量更新，你可以使用 flushSync。",
+      "options": { "ignorePunctuation": true },
+      "expect": {
+        "hit": true,
+        "kind": "normalized",
+        "score": 1,
+        "line": 300,
+        "punctFolded": false,
+        "span": { "$and": [{ "$contains": "批处理是一个`破坏性改动`" }, { "$contains": "flushSync" }] }
+      }
+    },
+    {
+      "name": "useId：API 名出自代码块，忽略标点后才能与正文句连读",
+      "excerpt": "useId 支持同一个组件在客户端和服务端生成相同的唯一的 ID，避免 hydration 的不兼容。",
+      "options": { "ignorePunctuation": true },
+      "expect": {
+        "hit": true,
+        "kind": "normalized",
+        "score": 1,
+        "line": 429,
+        "crossesBlocks": true,
+        "visible": { "$contains": "支持同一个组件在客户端和服务端生成相同的唯一的 ID" }
+      }
+    },
+    {
+      "name": "useSyncExternalStore：由 useMutableSource 改来，解决外部数据撕裂",
+      "excerpt": "useSyncExternalStore 是一个新的 api，经历了一次修改，由 useMutableSource 改变而来，主要用来解决外部数据撕裂问题。",
+      "expect": {
+        "hit": true,
+        "kind": "normalized",
+        "score": 1,
+        "line": 438,
+        "span": { "$contains": "是一个新的api" }
+      }
+    },
+    {
+      "name": "useInsertionEffect：不注入召回时 none —— 摘要跨了标题/代码块/正文三段，字面不连续",
+      "excerpt": "useInsertionEffect 这个 Hooks 执行时机在 DOM 生成之后，useLayoutEffect 之前，它的工作原理大致和 useLayoutEffect 相同，只是此时无法访问 DOM 节点的引用，一般用于提前注入 <style> 脚本。",
+      "expect": { "hit": false, "kind": "none" }
+    },
+    {
+      "name": "useInsertionEffect：交给 T4 语义召回 → semantic（内容在，但字面不连续）",
+      "excerpt": "useInsertionEffect 这个 Hooks 执行时机在 DOM 生成之后，useLayoutEffect 之前，它的工作原理大致和 useLayoutEffect 相同，只是此时无法访问 DOM 节点的引用，一般用于提前注入 <style> 脚本。",
+      "use": ["markdown", "semantic"],
+      "expect": {
+        "hit": true,
+        "kind": "semantic",
+        "via": "semantic:segment",
+        "score": { "$and": [{ "$gte": 0.6 }, { "$lt": 1 }] },
+        "line": 469,
+        "span": { "$contains": "这个 Hooks 执行时机在 `DOM` 生成之后" }
+      }
+    },
+    {
+      "name": "useInsertionEffect：去掉标题词后本体exact 命中",
+      "excerpt": "这个 Hooks 执行时机在 DOM 生成之后，useLayoutEffect 之前，它的工作原理大致和 useLayoutEffect 相同，只是此时无法访问 DOM 节点的引用，一般用于提前注入 <style> 脚本。",
+      "expect": {
+        "hit": true,
+        "kind": "exact",
+        "score": 1,
+        "line": 469,
+        "visible": "这个 Hooks 执行时机在 DOM 生成之后，useLayoutEffect 之前，它的工作原理大致和 useLayoutEffect 相同，只是此时无法访问 DOM 节点的引用，一般用于提前注入 <style> 脚本。"
+      }
+    },
+    {
+      "name": "并发模式：保持响应并按使渲染可中断来修复阻塞渲染",
+      "excerpt": "并发模式可帮助应用保持响应，并根据用户的设备性能和网速进行适当的调整，该模式通过使渲染可中断来修复阻塞渲染限制。",
+      "expect": {
+        "hit": true,
+        "kind": "exact",
+        "score": 1,
+        "line": 481,
+        "crossesBlocks": false
+      }
+    },
+    {
+      "name": "startTransition + useDeferredValue：不注入召回时 none —— 两句分属两小节，中间隔着列表项与标题",
+      "excerpt": "startTransition，主要为了能在大量的任务下也能保持 UI 响应。useDeferredValue 返回一个延迟响应的值，可以让一个 state 延迟生效，只有当前没有紧急更新时，该值才会变为最新值。",
+      "expect": { "hit": false, "kind": "none" }
+    },
+    {
+      "name": "startTransition + useDeferredValue：T4 召回命中，span 从标题「二、useDeferredValue」起 —— 标题就是原文",
+      "excerpt": "startTransition，主要为了能在大量的任务下也能保持 UI 响应。useDeferredValue 返回一个延迟响应的值，可以让一个 state 延迟生效，只有当前没有紧急更新时，该值才会变为最新值。",
+      "use": ["markdown", "semantic"],
+      "expect": {
+        "hit": true,
+        "kind": "semantic",
+        "via": "semantic:segment",
+        "score": { "$and": [{ "$gte": 0.6 }, { "$lt": 1 }] },
+        "line": 574,
+        "span": { "$and": [{ "$contains": "二、useDeferredValue" }, { "$contains": "返回一个延迟响应的值" }] }
+      }
+    },
+    {
+      "name": "startTransition 半句：回到原文即得 exact",
+      "excerpt": "startTransition，主要为了能在大量的任务下也能保持 UI 响应。",
+      "expect": { "hit": true, "kind": "exact", "score": 1, "line": 570 }
+    },
+    {
+      "name": "useDeferredValue 半句：「新的 state」的空格跨文字可删",
+      "excerpt": "返回一个延迟响应的值，可以让一个 state 延迟生效，只有当前没有紧急更新时，该值才会变为最新值。",
+      "expect": { "hit": true, "kind": "normalized", "score": 1, "line": 576 }
+    }
+  ]
+}

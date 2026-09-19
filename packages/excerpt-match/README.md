@@ -578,6 +578,40 @@ flat.map[10]; // 第 10 个字符在 md 源码中的下标
 但由于页面与摘录走同一套转换，**同一个词仍然匹配**；
 只有两个不同的原文收敛成同一串时才会误判。
 
+## `ignorePunctuation` 的三种写法
+
+「忽略标点」其实是三个不同的问题，压成一个布尔位会互相打架，所以除了 `boolean` 还支持：
+
+```ts
+locateExcerpt(ex, page, { ignorePunctuation: true });                  // 折成占位符，删不删看两侧文字
+locateExcerpt(ex, page, { ignorePunctuation: 'drop' });                // 占位符一律删：只留文字骨架
+locateExcerpt(ex, page, { ignorePunctuation: { symbols: true } });     // 反引号、+ = ~ 也算标点
+locateExcerpt(ex, page, { ignorePunctuation: { keep: [/\s+/] } });     // 只折标点，保留词边界
+```
+
+| 子决策 | 选项 | 默认 |
+|---|---|---|
+| 哪些字符算标点 | `symbols`（打开 `\p{S}`）、`extra`（点名追加） | `\p{P}` |
+| 折叠后留不留占位符 | `'fold'` / `'drop'` | `'fold'` |
+| 有没有例外 | `keep` 保护区 | 空（另有默认的省略表达保护，见下） |
+
+**`'drop'` 是删到底**：占位符一律删除，**连拉丁词边界的空格一起丢**，只留文字骨架 ——
+`ab, cd` 归一化后是 `abcd`，于是 `abcd` 与 `ab cd` 无法区分。这是有意的取舍：
+查重 / 召回宁可多命中再靠 `score` 排序；但用于引用校验会制造假命中，**别用它做取证**。
+想要「只删标点、留词边界」，组合 `keep` 即可：
+
+```ts
+{ ignorePunctuation: { mode: 'drop', keep: [/\s+/] } }  // 'hello, world' → 'hello world'
+```
+
+**省略表达默认受保护**：摘录里用户 / 系统写下的 `……`、`〔略〕` 是**结构性分隔符**，不是排版标点。
+折叠它们会把 T2 分段锚点一并废掉 —— 开着「忽略标点」反而比关着更难命中，与开关意图相反。
+确要一并折叠时显式写 `{ preserveEllipsis: false }`。
+
+> 反引号 `` ` `` 属 `Sk`、`+ = ~` 属 `Sm`，都不在 `\p{P}` 里，默认**不**参与折叠：
+> 代码与数学文本里它们载义。md 的 `**`、`` ` ``、`[](url)` 也不在这一层 ——
+> 它们早在**摊平层**就被剥掉了。
+
 ## `punctFolded`：区分「严格命中」与「靠忽略标点才命中」
 
 开启 `ignorePunctuation` 后，字面不同的摘录也能命中。但调用方往往
@@ -813,6 +847,42 @@ const myFallback: FallbackMatcher = {
 
 契约只到「归一化空间的 `[start, end)`」，坐标回切由 locator 统一负责 ——
 所以换成任何库都不用碰坐标逻辑。
+
+## 批量校验：`verifyExcerptFromPage` —— 命中就返回 md 原文
+
+校验「摘录是不是出自这页」时，**命中比坐标更重要**：引用要拿的是**源码片段**本身。
+所以这个入口返回的是结果对象，而不是布尔：
+
+```ts
+import { verifyExcerptFromPage, createExcerptVerifier } from '@isdk/excerpt-match';
+
+const r = await verifyExcerptFromPage(excerpt, mdSource, {
+  markdown: md,
+  retriever,                       // 可选：需要 T4 时给
+  aligner: createDmpFallback(dmp), // 可选：段内再对齐
+});
+if (r.found) cite(r.source);       // r.source 就是 md 源码片段
+
+// 一页对多条：建一次索引，别每条重建
+const v = createExcerptVerifier(mdSource, { markdown: md, retriever });
+for (const it of items) it.ok = (await v.check(it.excerpt)).found;
+```
+
+| 字段 | 含义 |
+|---|---|
+| `found` | 是否命中（就是旧函数返回的那个布尔） |
+| `source` | **命中的 md 源码片段** = `pageContent.slice(index, index + length)`，含语法标记 |
+| `text` | 剥掉语法标记的可见文本，供展示 |
+| `index` / `length` / `line` | 源码坐标与行号，可直接高亮 |
+
+- **异步**：召回器允许返回 Promise，只要用得上 T4 就必然异步（T0–T3 本身是同步的）。
+- `minScore`（默认取 `minFallbackScore`，即 0.75）只约束 T3/T4 —— T0–T2 恒为 1。
+- 未命中默认 `console.warn`；`onMiss` 可换成自己的埋点。
+- 只要元数据就用 `locateExcerptFromPage`，返回完整的 `ExcerptMatch`。
+
+从手搓的 `toLowerCase + includes` 迁过来，额外补上的是：
+md 摊平、跨块复制、跨标点差异、省略号多写法（且**按原文顺序链式命中**，
+不像「逐段 exists」那样把散落全篇的片段也算通过），以及 T4 接住的标题词注入与跨小节归纳。
 
 ## 性能
 

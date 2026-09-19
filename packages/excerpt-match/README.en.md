@@ -621,6 +621,43 @@ Known limitation: `McDonald` → `Mc Donald` and `iPhone` → `i Phone` are over
 But since page and excerpt go through the same transform, **the same word still
 matches**; a false positive requires two *different* sources collapsing to one string.
 
+## Three ways to write `ignorePunctuation`
+
+"ignoring punctuation" is really three different questions; collapsing them into one
+boolean makes them fight each other. Besides `boolean`, two more forms are accepted:
+
+```ts
+locateExcerpt(ex, page, { ignorePunctuation: true });               // fold to placeholder, drop decided by script
+locateExcerpt(ex, page, { ignorePunctuation: 'drop' });             // drop every placeholder: bare skeleton
+locateExcerpt(ex, page, { ignorePunctuation: { symbols: true } });  // backticks, + = ~ count too
+locateExcerpt(ex, page, { ignorePunctuation: { keep: [/\s+/] } });  // fold punctuation only, keep word breaks
+```
+
+| Sub-decision | Option | Default |
+|---|---|---|
+| Which characters count | `symbols` (add `\p{S}`), `extra` (name a few) | `\p{P}` |
+| Keep the placeholder? | `'fold'` / `'drop'` | `'fold'` |
+| Any exceptions | `keep` protected ranges | none (omission marks protected by default, below) |
+
+**`'drop'` drops everything**: every placeholder goes away, **including the space between Latin
+words** — `ab, cd` normalizes to `abcd`, so `abcd` and `ab cd` become indistinguishable.
+That trade is deliberate: dedup / recall prefers over-matching and then sorts by `score`,
+but **never use it for citation checking** — it manufactures false hits. To drop only
+punctuation and keep word breaks, combine it with `keep`:
+
+```ts
+{ ignorePunctuation: { mode: 'drop', keep: [/\s+/] } }  // 'hello, world' → 'hello world'
+```
+
+**Omission marks are protected by default**: `……` / `〔略〕` written by the user or the system
+are *structural* separators, not typesetting. Folding them silently disables T2 segmented
+anchors — enabling "ignore punctuation" would then match **less** than disabling it, the
+opposite of the switch's intent. Opt out explicitly with `{ preserveEllipsis: false }`.
+
+> A backtick `` ` `` is `Sk`, `+ = ~` are `Sm` — none of them is `\p{P}`, so they are not
+> folded by default: they carry meaning in code and math text. Markdown's `**`, `` ` `` and
+> `[](url)` are not folded here either — the **flatten layer** already stripped them.
+
 ## `punctFolded`: separating "strict hit" from "hit only by ignoring punctuation"
 
 With `ignorePunctuation` enabled, excerpts that differ literally can still match. But
@@ -879,6 +916,44 @@ const myFallback: FallbackMatcher = {
 
 The contract only goes as far as `[start, end)` in normalized space; the locator handles
 mapping back to source — so swapping in any library never touches coordinate logic.
+
+## Batch verification: `verifyExcerptFromPage` — returns the source on hit
+
+When checking "does this excerpt come from this page", **the hit matters more than the
+coordinates**: what you cite is the **source snippet** itself. So this entry point returns a
+result object rather than a boolean:
+
+```ts
+import { verifyExcerptFromPage, createExcerptVerifier } from '@isdk/excerpt-match';
+
+const r = await verifyExcerptFromPage(excerpt, mdSource, {
+  markdown: md,
+  retriever,                       // optional: needed for T4
+  aligner: createDmpFallback(dmp), // optional: align inside the segment
+});
+if (r.found) cite(r.source);       // r.source is the markdown source snippet
+
+// one page, many excerpts: build the index once
+const v = createExcerptVerifier(mdSource, { markdown: md, retriever });
+for (const it of items) it.ok = (await v.check(it.excerpt)).found;
+```
+
+| Field | Meaning |
+|---|---|
+| `found` | whether it hit (the boolean the old function returned) |
+| `source` | **the matched markdown snippet** = `pageContent.slice(index, index + length)`, markers included |
+| `text` | visible text without markers, for display |
+| `index` / `length` / `line` | source coordinates and line number, ready for highlighting |
+
+- **Async**: a retriever may return a Promise, so anything using T4 is async (T0–T3 are sync).
+- `minScore` (defaults to `minFallbackScore`, i.e. 0.75) constrains only T3/T4 — T0–T2 are always 1.
+- A miss logs `console.warn` by default; override with `onMiss`.
+- Want raw metadata instead? Use `locateExcerptFromPage`, which returns the full `ExcerptMatch`.
+
+Migrating from a hand-rolled `toLowerCase + includes` also buys: markdown flattening,
+cross-block copies, punctuation differences, the many ellipsis spellings (**matched as an
+ordered chain**, so fragments scattered across the page no longer pass), and T4 catching
+title-word injection and cross-section summaries.
 
 ## Performance
 
