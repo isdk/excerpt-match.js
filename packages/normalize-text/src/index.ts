@@ -40,6 +40,13 @@ export type { NormalizedText } from './types';
 export { normalizeWithMap } from './normalize';
 export type { NormalizeOptions } from './normalize';
 
+// ignorePunctuation 的三种写法（boolean / 'drop' / 对象）与归一化函数
+export { normalizeIgnorePunctuationOption, withKeep } from './ignorePunctuation';
+export type {
+  IgnorePunctuationKeep, IgnorePunctuationMode, IgnorePunctuationOption,
+  IgnorePunctuationOptions, ResolvedIgnorePunctuation,
+} from './ignorePunctuation';
+
 // 字形簇：命中边界要对齐，否则会切出半个 emoji
 export { snapToGraphemeBoundary, countGraphemes } from './grapheme';
 export type { TextSpan } from './grapheme';

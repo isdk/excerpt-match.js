@@ -19,12 +19,15 @@ import { GROUPED_DIGITS_PATTERN } from './numberNotation';
 import type { ChineseNumeralParser } from './numberNotation';
 import { canDropSpaceBetween, unicodeScriptOf } from '@isdk/whitespace-semantics';
 import { findIdentifierBreaks, type IdentifierBreak } from '@isdk/identifier-variants';
+import { markKeepRanges, normalizeIgnorePunctuationOption } from './ignorePunctuation';
+import type { IgnorePunctuationOption } from './ignorePunctuation';
 export { snapToGraphemeBoundary } from '@isdk/normalize-text';
 
 /** 空白 / 被忽略标点的统一占位符。注意：正文若真含 U+0001 需先剔除 */
 const FOLDED_PLACEHOLDER = '\u0001';
 
-const PUNCTUATION_PATTERN = /[\p{P}]/u;
+// 标点怎么算、折后要不要留占位符、有无例外 —— 见 ./ignorePunctuation 的三种写法
+// （`\p{P}` 这个默认答案由 `normalizeIgnorePunctuationOption` 给出）
 
 const ZERO_WIDTH_CODE_POINTS = new Set<number>([
   0x00ad, 0x200b, 0x200c, 0x200d, 0x200e, 0x200f,
@@ -102,8 +105,21 @@ function foldCodePointWithNfkc(cp: number): string {
 export interface NormalizeOptions {
   /** 是否忽略大小写。用 `toLowerCase` 而非 `toUpperCase` —— `ß.toUpperCase()` 会变成 `SS`，改变长度、破坏映射 */
   ignoreCase?: boolean;
-  /** 是否把所有标点折叠成统一占位符（而非删除，以保留边界）。中文标点常载义，默认关闭 */
-  ignorePunctuation?: boolean;
+  /**
+   * 是否忽略标点。中文标点常载义，默认关闭。
+   *
+   * @remarks
+   * 除了 `boolean`，还支持两种更细的写法 —— 「哪些字符算标点」「折后留不留占位符」
+   * 「有没有例外」其实是三件事，见 {@link IgnorePunctuationOption}：
+   *
+   * ```ts
+   * { ignorePunctuation: true }                        // 折成占位符，删不删看两侧文字
+   * { ignorePunctuation: 'drop' }                      // 占位符一律删：只留文字骨架
+   * { ignorePunctuation: { symbols: true } }           // 反引号、+ = ~ 这类符号也算标点
+   * { ignorePunctuation: { keep: [/\s+/] } }           // 只折标点，词边界照旧
+   * ```
+   */
+  ignorePunctuation?: IgnorePunctuationOption;
   /** 是否做 NFKC 折叠：全角→半角、`ﬁ`→`fi`、`①`→`1` */
   ignoreWidth?: boolean;
   /** CJK 相邻时删除其间的空白占位符：<p>你好</p><p>世界</p> ≡ 复制出的「你好 世界」 */
@@ -551,8 +567,11 @@ function foldPunctuationAndSpace(input: NormalizedText, options: NormalizeOption
   const base = input.text;
   const baseMap = input.map;
   const baseEnd = input.mapEnd ?? inferCharEndOffsets(baseMap, base);
-  const ignorePunctuation = options.ignorePunctuation ?? false;
+  const punct = normalizeIgnorePunctuationOption(options.ignorePunctuation);
   const dropSpace = options.dropSpaceBetweenCJK ?? true;
+  // 保护区：调用方明确告知的省略表达不参与折叠 ——
+  // 否则「忽略标点」会顺手抹掉结构性分隔符（见 ignorePunctuation.ts 的取舍说明）
+  const keepRanges = markKeepRanges(base, punct.keep);
 
   // 助词判定在**本阶段的输入**上跑：位置必须与这里的下标对齐
   const foldable: ReadonlySet<number> | null =
@@ -587,6 +606,13 @@ function foldPunctuationAndSpace(input: NormalizedText, options: NormalizeOption
     const w = cp > 0xffff ? 2 : 1;
 
     if (WHITESPACE_PATTERN.test(String.fromCodePoint(cp))) {
+      // 保护区里的空白同样保留原文：照字面写出，不折成占位符。
+      // keep: [/\s+/] 组合 drop 档就是靠这一條才得到「只删标点、留词边界」。
+      if (keepRanges?.[i]) {
+        emit(base[i], i);
+        i += w;
+        continue;
+      }
       if (pendingWhitespace === null) pendingWhitespace = i;
       i += w;
       continue;
@@ -599,7 +625,7 @@ function foldPunctuationAndSpace(input: NormalizedText, options: NormalizeOption
     let buf = '';
     const raw = base.slice(i, i + w);
     for (const c of raw) {
-      if (ignorePunctuation && PUNCTUATION_PATTERN.test(c)) buf += FOLDED_PLACEHOLDER;
+      if (punct.enabled && !keepRanges?.[i] && punct.pattern!.test(c)) buf += FOLDED_PLACEHOLDER;
       else {
         // 助词折叠：必须先过词性判定器
         const folded = foldable?.has(i) ? CHINESE_PARTICLE_FOLD_MAP.get(c) : undefined;
@@ -619,13 +645,32 @@ function foldPunctuationAndSpace(input: NormalizedText, options: NormalizeOption
   const textEnd = folded.mapEnd ?? inferCharEndOffsets(textMap, text);
   const textBack = folded.back;
   const drop = new Array<boolean>(text.length).fill(false);
+  // drop 档：占位符一律删除，不看两侧脸色（连拉丁词边界的空格也一并丢）——
+  // 调用方显式选择了「只留文字骨架」，不再由脚本角色替他决定哪些分隔符有价值
+  const dropAll = punct.enabled && punct.mode === 'drop';
   for (let k = 0; k < text.length; k++) {
     if (text[k] !== FOLDED_PLACEHOLDER) continue;
+    if (dropAll) {
+      drop[k] = true;
+      continue;
+    }
     let p = k - 1;
     while (p >= 0 && text[p] === FOLDED_PLACEHOLDER) p--;
     let q = k + 1;
     while (q < text.length && text[q] === FOLDED_PLACEHOLDER) q++;
-    if (p < 0 || q >= text.length) continue;
+    /**
+     * 边缘占位符串：一侧根本没有文字，它连「分隔」的职责都不成立，
+     * 一律删除（等价于 trim）。
+     *
+     * 不删会留下一条隐蔽的不对称：同一串标点，在页面里因为后面还有文字
+     * 而被这一阶段删掉，在摘录里因为落在末尾而保留 —— 于是
+     * `ignorePunctuation: true` 反而比 `false` 更容易失配，
+     * 与「忽略标点」的语义正好相反。
+     */
+    if (p < 0 || q >= text.length) {
+      drop[k] = true;
+      continue;
+    }
     const left = text.codePointAt(p);
     const right = text.codePointAt(q);
     if (left === undefined || right === undefined) continue;

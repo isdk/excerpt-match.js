@@ -27,6 +27,24 @@ r.text;   // 归一化后文本
 r.map[2]; // 第 2 个字符在原文中的下标
 ```
 
+## `ignorePunctuation` 的三种写法
+
+「忽略标点」其实是三个问题：`boolean` 只回答了「要不要折」，所以还支持——
+
+```ts
+{ ignorePunctuation: true }                   // \p{P} → 占位符，删不删看两侧文字的空格角色
+{ ignorePunctuation: 'drop' }                 // 占位符一律删除：只留文字骨架
+{ ignorePunctuation: { symbols: true } }      // 把 \p{S} 也纳入：反引号、+ = ~ 算标点
+{ ignorePunctuation: { extra: ['*'] } }       // 点名追加几个字符
+{ ignorePunctuation: { keep: [/\s+/] } }      // 例外：保护区内的片段原样保留
+```
+
+- **`'drop'` 是删到底**：占位符一律删除，**连拉丁词边界的空格一起丢**（`ab, cd` → `abcd`）。
+  这是给查重 / 召回用的；做引用校验会制造假命中。要「只删标点」就组合 `keep: [/\s+/]`。
+- **字符串型的 `keep` 会先过 NFKC**：判定时流水线已跑到第 4 阶段，`……` 早已变成 `......`，
+  照字面匹配必然落空；正则则按原样作用于归一化后的文本。
+- `preserveEllipsis`（默认 `true`）留给上层标记「哪些是省略表达」——`excerpt-match` 用它保住 T2 分段锚点。
+
 ## 边界与取舍
 
 **四个阶段，顺序是契约**：
