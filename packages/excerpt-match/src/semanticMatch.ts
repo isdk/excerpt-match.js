@@ -17,7 +17,7 @@ import type { Segment, SemanticRetriever } from '@isdk/semantic-locate';
 import type { NegationLexicon } from '@isdk/zh-negation';
 import { NO_MATCH } from './types';
 import type { ExcerptMatch, FallbackMatcher, MatchContext, NormalizedText } from './types';
-import { spanFromNormalized, type PageIndex } from './locator';
+import { spanFromNormalized, type TextIndex } from './locator';
 import { detectLanguageProfile, tokenize } from './languageProfiles';
 
 export { splitSegments };
@@ -55,7 +55,7 @@ function sliceNormalized(nt: NormalizedText, start: number, length: number): Nor
  * 这里用 `spanFromNormalized` 换算回 md 源码。
  */
 export async function locateSemantic(
-  index: PageIndex,
+  index: TextIndex,
   excerpt: string,
   retrieve: SemanticRetriever,
   options: {
