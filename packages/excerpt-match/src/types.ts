@@ -14,6 +14,7 @@
 import type { ParticleTagger } from '@isdk/zh-particles';
 import type { ChineseNumeralParser } from '@isdk/normalize-text';
 import type { NegationLexicon } from '@isdk/zh-negation';
+import type { IgnorePunctuationOption } from '@isdk/normalize-text';
 import type { PresetName } from './presets';
 
 /**
@@ -241,14 +242,26 @@ export interface MatchOptions {
   ignoreCase?: boolean;
 
   /**
-   * 是否把所有标点折叠成统一占位符。
+   * 是否忽略标点。除了布尔值，还支持 `'drop'` 与对象写法
+   * （见 {@link IgnorePunctuationOption}）—— 它们回答三个不同问题：
+   *
+   * | 写法 | 含义 |
+   * |---|---|
+   * | `true` | 折成占位符，删不删交给文字的空格角色裁决 |
+   * | `'drop'` | 占位符一律删除：只留文字骨架（查重场景） |
+   * | `{ symbols: true }` | 把 `` ` + = ~ `` 这类符号也算标点 |
+   * | `{ keep: [/\s+/] }` | 只折标点，保留词边界 |
    *
    * @remarks
    * 默认关闭。开启后 `不，是` 与 `不是` 会等价 ——
    * 中文标点常常载义（`禁止，吸烟` ≠ `禁止吸烟`），请按需开启。
+   *
+   * **省略表达默认受保护**：摘录里用户 / 系统写下的 `……` 属于结构性分隔符，
+   * 不会因为开启本开关而被抹掉（否则 T2 分段锚点会随之失效）；
+   * 确要一并折叠时显式写 `{ preserveEllipsis: false }`。
    * @defaultValue `false`
    */
-  ignorePunctuation?: boolean;
+  ignorePunctuation?: IgnorePunctuationOption;
 
   /**
    * 是否做 NFKC 折叠（全角→半角、`ﬁ`→`fi`、`①`→`1`）。

@@ -12,7 +12,8 @@ import type {
   MatchOptions, NormalizedText,
 } from './types';
 import { NO_MATCH } from './types';
-import { normalizeWithMap, snapToGraphemeBoundary } from '@isdk/normalize-text';
+import { normalizeWithMap, snapToGraphemeBoundary, withKeep } from '@isdk/normalize-text';
+import type { IgnorePunctuationOption } from '@isdk/normalize-text';
 import type { NormalizeOptions } from '@isdk/normalize-text';
 import { trimMarkdownEdges, expandToInlineMarkers, deriveJoined } from '@isdk/md-flatten';
 import { detectLanguageProfile, languageProfileFor, tokenize, type LanguageProfile } from './languageProfiles';
@@ -70,7 +71,9 @@ interface ResolvedOptions {
   maxCrossBlocks: number;
   profile: LanguageProfile;
   ignoreCase: boolean;
-  ignorePunctuation: boolean;
+  ignorePunctuation: IgnorePunctuationOption;
+  /** 生效的省略号模式（`DEFAULT_ELLIPSIS` 或调用方覆盖）—— 给保护区用 */
+  ellipsisPatterns: readonly EllipsisPattern[];
   ignoreWidth: boolean;
   ignoreParticles: boolean | ParticleTagger;
   numberGrouping: boolean;
@@ -94,7 +97,7 @@ interface ResolvedOptions {
 
 interface NormOpts {
   ignoreCase: boolean;
-  ignorePunctuation: boolean;
+  ignorePunctuation: IgnorePunctuationOption;
   ignoreWidth: boolean;
   dropSpaceBetweenCJK: boolean;
   ignoreParticles: boolean | ParticleTagger;
@@ -106,10 +109,24 @@ interface NormOpts {
   normalizeIdentifierSeparators: boolean;
 }
 
+/**
+ * 把「用户/系统定义的省略表达」并入 `ignorePunctuation` 的保护区。
+ *
+ * @remarks
+ * 省略号是**结构**而不是排版标点：摘录里出现 `……`，是作者明确在说「此处省略」。
+ * 折叠掉它，`ignorePunctuation` 就会连带废掉 T2 分段锚点 ——
+ * 开启开关反而比关闭更难命中，这与开关的意图正好相反。
+ *
+ * 所以默认保护；只有 `{ preserveEllipsis: false }` 才允许折叠它们。
+ */
+function resolveIgnorePunctuation(r: ResolvedOptions): IgnorePunctuationOption {
+  return withKeep(r.ignorePunctuation, r.ellipsisPatterns as readonly (string | RegExp)[]);
+}
+
 function toNormalizationOptions(r: ResolvedOptions): NormOpts {
   return {
     ignoreCase: r.ignoreCase,
-    ignorePunctuation: r.ignorePunctuation,
+    ignorePunctuation: resolveIgnorePunctuation(r),
     ignoreWidth: r.ignoreWidth,
     dropSpaceBetweenCJK: r.profile.dropSpaceBetweenCJK,
     ignoreParticles: r.ignoreParticles,
@@ -200,11 +217,14 @@ function rebaseBlocks(blocks: FlatBlock[], back: number[] | undefined): FlatBloc
 function resolve(input: MatchOptions, pageContent: string): ResolvedOptions {
   const o = withPreset(input);
   const profile = o.locale && o.locale !== 'auto' ? languageProfileFor(o.locale) : detectLanguageProfile(pageContent);
-  // 省略号模式要按「页面的归一化规则」归一，否则匹配不到归一化后的文本
+  // 省略号模式要按「页面的归一化规则」归一，否则匹配不到归一化后的文本。
+  //
+  // 但**不含 `ignorePunctuation`**：省略表达是自己人，它的形态不能被标点策略改写 ——
+  // 既然上面把它放进了保护区（原文保留），这里的切分正则就必须照样指着原文形态，
+  // 否则会出现「摘录里留着 `[略]`、切分却按 `略` 去找」的自相矛盾。
   const normPattern = (x: string): string =>
     normalizeWithMap(x, {
       ignoreCase: o.ignoreCase ?? true,
-      ignorePunctuation: o.ignorePunctuation ?? false,
       ignoreWidth: o.ignoreWidth ?? true,
       dropSpaceBetweenCJK: profile.dropSpaceBetweenCJK,
       ignoreParticles: o.ignoreParticles ?? false,
@@ -216,6 +236,7 @@ function resolve(input: MatchOptions, pageContent: string): ResolvedOptions {
       normalizeIdentifierSeparators: o.normalizeIdentifierSeparators ?? false,
     }).text;
   const locale = o.locale && o.locale !== 'auto' ? o.locale : profile.id;
+  const ellipsisPatterns = o.ellipsis ?? DEFAULT_ELLIPSIS;
   return {
     locale,
     markdown: o.markdown,
@@ -227,6 +248,7 @@ function resolve(input: MatchOptions, pageContent: string): ResolvedOptions {
     profile,
     ignoreCase: o.ignoreCase ?? true,
     ignorePunctuation: o.ignorePunctuation ?? false,
+    ellipsisPatterns: ellipsisPatterns,
     ignoreWidth: o.ignoreWidth ?? true,
     ignoreParticles: o.ignoreParticles ?? false, // 默认不折叠：误判代价高于漏判
     numberGrouping: o.numberGrouping ?? true,
@@ -240,8 +262,8 @@ function resolve(input: MatchOptions, pageContent: string): ResolvedOptions {
     maxGap: o.maxGap ?? Infinity,
     checkPolarity: o.checkPolarity ?? true,
     negationLexicon: o.negationLexicon,
-    ellipsisSplit: buildEllipsisRe(o.ellipsis ?? DEFAULT_ELLIPSIS, 'g', normPattern),
-    ellipsisTest: buildEllipsisRe(o.ellipsis ?? DEFAULT_ELLIPSIS, '', normPattern),
+    ellipsisSplit: buildEllipsisRe(ellipsisPatterns, 'g', normPattern),
+    ellipsisTest: buildEllipsisRe(ellipsisPatterns, '', normPattern),
     minFallbackScore: o.minFallbackScore ?? 0.75,
     fallbacks: o.fallbacks ?? [],
   };
@@ -364,6 +386,10 @@ function renderedSpanOf(view: View, start: number, end: number): string {
   return view.raw.slice(bs, Math.max(bs, be));
 }
 
+/** 首尾的标点 / 空白 —— 归一化阶段已把它们当作可选分隔符丢弃，比较时两侧都要先削掉 */
+const EDGE_PUNCT = /^[\p{P}\p{Z}]+|[\p{P}\p{Z}]+$/gu;
+const trimEdges = (s: string): string => s.replace(EDGE_PUNCT, '');
+
 /**
  * 判断命中是否**跨越了标点差异**。
  *
@@ -387,8 +413,11 @@ function punctuationDiverges(
 ): boolean {
   if (!r.ignorePunctuation) return false;
   const strict = { ...toNormalizationOptions(r), ignorePunctuation: false };
-  const pageSide = normalizeWithMap(renderedSpanOf(view, start, end), strict).text;
-  const excerptSide = normalizeWithMap(excerptRendered, strict).text;
+  // 两侧都要先削边缘：归一化把首/尾的标点当可选分隔符删掉了，页面的 span 因此
+  // 常常不含末尾句号，而摘要侧拿到的仍是原文。不一起削的话，「只差一个末尾句号」
+  // 会被误判成跨越标点差异（全半角这类宽度差异本就不算差异）。
+  const pageSide = trimEdges(normalizeWithMap(renderedSpanOf(view, start, end), strict).text);
+  const excerptSide = trimEdges(normalizeWithMap(excerptRendered, strict).text);
   return pageSide !== excerptSide;
 }
 
