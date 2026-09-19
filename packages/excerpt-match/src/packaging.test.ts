@@ -1,10 +1,9 @@
 /**
  * 发布契约测试。
  *
- * 为什么值得写测试：这类错误在开发期**完全不可见** ——
- * workspace 里 `main`/`exports` 直接指向 `src/*.ts`，怎么 import 都通；
- * 一旦 `publishConfig` 切到 `dist`，少了 `exports` 声明就会在**用户侧**
- * 炸成 `ERR_PACKAGE_PATH_NOT_EXPORTED`。靠人眼 review 守不住。
+ * 为什么值得写测试：workspace 里 `main`/`exports` 指向 `dist/*.js`（与发布
+ * 形态一致），少了 `exports` 声明就会在**用户侧**炸成
+ * `ERR_PACKAGE_PATH_NOT_EXPORTED`，而这类错误靠人眼 review 守不住。
  *
  * 另一条被钉住的规则：**主包不再代售子包契约**。
  * 归一化、md 摊平、否定检测这些能力已经拆成独立子包，主入口只保留
@@ -62,8 +61,15 @@ describe('★ exports 与构建入口一一对应', () => {
 });
 
 describe('★ 主入口的 exports 形态正确', () => {
-  it('开发期指向 src', () => {
-    expect(JSON.stringify(pkg.exports?.['.'])).toContain('src/index.ts');
+  it('开发期即指向 dist，且与 publishConfig 完全一致', () => {
+    const exp = pkg.exports?.['.'] as Record<string, string> | undefined;
+    expect(exp).toBeDefined();
+    expect(exp!.types).toContain('dist/index.d.ts');
+    expect(exp!.import).toContain('dist/index.js');
+    expect(exp!.require).toContain('dist/index.cjs');
+    // 顶层 exports 是开发期真正生效的解析入口，必须与发布配置同步，
+    // 否则「本地能跑、发布后炸」的漂移会在用户侧才暴露
+    expect(exp).toEqual(pkg.publishConfig?.exports?.['.']);
   });
 
   it('发布期指向 dist，且同时给 import / require', () => {

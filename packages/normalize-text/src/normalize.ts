@@ -21,7 +21,7 @@ import { canDropSpaceBetween, unicodeScriptOf } from '@isdk/whitespace-semantics
 import { findIdentifierBreaks, type IdentifierBreak } from '@isdk/identifier-variants';
 import { markKeepRanges, normalizeIgnorePunctuationOption } from './ignorePunctuation';
 import type { IgnorePunctuationOption } from './ignorePunctuation';
-export { snapToGraphemeBoundary } from '@isdk/normalize-text';
+export { snapToGraphemeBoundary } from './grapheme';
 
 /** 空白 / 被忽略标点的统一占位符。注意：正文若真含 U+0001 需先剔除 */
 const FOLDED_PLACEHOLDER = '\u0001';
