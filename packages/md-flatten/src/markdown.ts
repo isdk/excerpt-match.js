@@ -326,7 +326,27 @@ export function createMdastFlattener(fromMarkdown: FromMarkdown, options: MdastO
           let cs = start;
           while (cs < end && body[cs] === '`') cs += 1;
           if (cs < end && body[cs] === ' ' && !node.value.startsWith(' ')) cs += 1;
+          let ce = end;
+          while (ce > cs && body[ce - 1] === '`') ce -= 1;
+          /**
+           * 反引号也是行内标记 —— 必须登记进 `constructs`。
+           *
+           * 这里早先直接 `return`，绕过了下面的 `INLINE_TYPES` 分支：
+           * 于是行内代码既不在 `constructs` 里，`inl` 也全是 -1，
+           * `expandToInlineMarkers` 无从补齐，引用会切出半截反引号
+           * （`React 18\` 通过在…`）。`INLINE_TYPES` 里的 `inlineCode` 是死配置。
+           */
+          constructs.push({
+            start: start + skip,
+            end: end + skip,
+            contentStart: cs + skip,
+            contentEnd: ce + skip,
+            parent: cur,
+          });
+          const saved = cur;
+          cur = constructs.length - 1;
           emitText(node.value, cs, end);
+          cur = saved;
           return true;
         }
         if (t === 'code') {

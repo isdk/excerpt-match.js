@@ -61,6 +61,22 @@ describe('★ 坐标映射：可见文本 ↔ md 源码', () => {
     expect(src.slice(full.start, full.end)).toBe('**认为**'); // 补齐：完整
   });
 
+  it('★ 行内代码：反引号同样是行内标记，span 要补齐两侧', () => {
+    // 回归：inlineCode 分支曾提前 return，绕过了 INLINE_TYPES 的登记，
+    // 于是 constructs 里没有它、inl 全是 -1，补齐无从谈起 ——
+    // 引用会切出「React 18` 通过在…」这种半截反引号。
+    const src = '`React 18` 引入了新的 root API。';
+    const r = flatten.flatten(src);
+    const at = r.text.indexOf('React 18');
+    expect(r.inl?.[at] ?? -1).toBeGreaterThanOrEqual(0); // 该字符属于某个行内构造
+
+    const raw = { index: r.map[at], length: (r.mapEnd?.[at + 7] ?? r.map[at + 7]) - r.map[at] };
+    expect(src.slice(raw.index, raw.index + raw.length)).toBe('React 18'); // 未补齐：半截
+
+    const full = expandToInlineMarkers(r, at, at + 7, raw.index, raw.index + raw.length);
+    expect(src.slice(full.start, full.end)).toBe('`React 18`'); // 补齐：完整
+  });
+
   it('块级切片带源码坐标', () => {
     const src = '第一段。\n\n第二段。';
     const r = flatten.flatten(src);
