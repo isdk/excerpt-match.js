@@ -48,6 +48,15 @@ flat.map[10];
 - When an excerpt starts/ends **inside** an inline construct, exactness and
   standalone renderability cannot both hold; this package chooses exactness
 - Flattened text ends with a block terminator `\n`; `trim()` when comparing
+- `deriveJoined(flat)` derives a **separator-free view** (for cross-paragraph
+  excerpt matching): block separators are removed so blocks sit flush against
+  each other. Its `back` points into the **flattened text**, and `blocks` are
+  already rebased to joined coordinates — but feed the result to
+  `normalizeWithMap` and the resulting `norm.back` still points into the
+  **flattened text** (`j.back` gets composed in). To map a normalized index to
+  joined raw you must bisect through `j.back` for one extra hop; slicing the
+  joined `text` with the normalized `back` directly is uniformly off by the
+  number of separators stripped so far
 
 ## See also
 

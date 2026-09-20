@@ -50,6 +50,11 @@ flat.map[10]; // 第 10 个字符在 md 源码中的下标
   本包选精确（`expandToInlineMarkers` 只在完整覆盖内容时补齐标记）
 - 摊平结果末尾带块终止符 `
 `，比对时记得 `trim()`
+- `deriveJoined(flat)` 派生**无分隔符视图**（跨段摘录匹配用）：删掉块间分隔符，
+  让块首尾直接相邻。返回值的 `back` 指向**摊平文本**，`blocks` 已换算到
+  joined 坐标 —— 但把它再喂给 `normalizeWithMap` 后，得到的 `norm.back`
+  指向的仍是**摊平文本**（`j.back` 被复合进去了）。需要「归一化下标 → joined
+  raw」必须拿 `j.back` 二分补一跳，直接切 joined 的 `text` 会整体错位
 
 ## 相关
 

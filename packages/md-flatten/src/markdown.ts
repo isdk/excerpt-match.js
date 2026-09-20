@@ -662,6 +662,18 @@ export function expandToInlineMarkers(
  * @remarks
  * 调用方应拿它**参与「取最早」的比较**，不要单独用它决定结果 ——
  * 否则会丢掉严格视图里更靠前的命中。
+ *
+ * 返回值自带三样派生数据，坐标系如各字段所述：
+ * - `back`：joined 下标 → **摊平文本**下标（keep 数组 + 末尾哨兵，升序）
+ * - `blocks`：块切片，已换算到 **joined raw** 坐标
+ * - `map` / `mapEnd` / `inl`：同链换算，仍指向 **md 源码**
+ *
+ * **坐标复合陷阱**：把 joined 结果再喂给 `normalizeWithMap` 时，返回的
+ * `norm.back` 指向的是**摊平文本**而不是 joined raw —— 因为 `j.back`
+ * （joined → 摊平）已被复合进去。需要「归一化下标 → joined raw」时，
+ * 必须拿 `j.back` 再补一跳（升序数组二分：`raw 下标 = 严格小于 q 的元素个数`）；
+ * 直接拿归一化的 `back` 去切 joined 的 `text` 会整体错位，
+ * 偏移量正是已剥掉的分隔符数。
  */
 export function deriveJoined(flat: FlatResult): FlatResult | null {
   const isSep = flat.isSep;
