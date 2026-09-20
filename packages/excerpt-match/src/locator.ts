@@ -42,7 +42,7 @@ function escapeRe(s: string): string {
  * 否则用户写的 `〔中略〕` 匹配不到归一化后的 `[中略]`（NFKC 把全角括号折成了半角）。
  * 正则模式则原样使用 —— 它本来就作用在归一化后的文本上。
  *
- * @param norm 与页面/摘录相同的归一化函数
+ * @param norm 与文档/摘录相同的归一化函数
  */
 function buildEllipsisRe(
   patterns: readonly EllipsisPattern[],
@@ -146,7 +146,7 @@ function spanOpts(r: ResolvedOptions, flat: FlatResult | undefined): { trimMd: b
 /** md 源码 →（摊平）→ 渲染文本 →（归一化）→ 归一化文本，映射复合后仍指向 md 源码 */
 /** 一个匹配视图 */
 interface View {
-  /** 可见文本（T0 用）；md 模式下是摊平结果，纯文本模式下就是 pageContent 本身 */
+  /** 可见文本（T0 用）；md 模式下是摊平结果，纯文本模式下就是 text 本身 */
   raw: string;
   /** raw 下标 → 源码下标的映射（T0 回切用）；null = 恒等（纯文本模式） */
   rawIdx: NormalizedText | null;
@@ -188,17 +188,17 @@ interface Built {
   joined(): View | null;
 }
 
-function buildHay(pageContent: string, r: ResolvedOptions): Built {
+function buildHay(text: string, r: ResolvedOptions): Built {
   if (!r.markdown) {
-    const norm = normalizeWithMap(pageContent, toNormalizationOptions(r));
+    const norm = normalizeWithMap(text, toNormalizationOptions(r));
     return {
-      strict: { raw: pageContent, rawIdx: null, norm, blocks: [] },
+      strict: { raw: text, rawIdx: null, norm, blocks: [] },
       blocks: [],
       flat: null,
       joined: () => null,
     };
   }
-  const flat = r.markdown.flatten(pageContent);
+  const flat = r.markdown.flatten(text);
   const hay = normalizeWithMap(flat, toNormalizationOptions(r));
   let cached: View | null | undefined;
   return {
@@ -285,10 +285,10 @@ function rebaseBlocks(blocks: FlatBlock[], back: number[] | undefined): FlatBloc
 }
 
 /** 先套用预设（若指定），再解析 —— 保证显式项覆盖预设 */
-function resolve(input: MatchOptions, pageContent: string): ResolvedOptions {
+function resolve(input: MatchOptions, text: string): ResolvedOptions {
   const o = withPreset(input);
-  const profile = o.locale && o.locale !== 'auto' ? languageProfileFor(o.locale) : detectLanguageProfile(pageContent);
-  // 省略号模式要按「页面的归一化规则」归一，否则匹配不到归一化后的文本。
+  const profile = o.locale && o.locale !== 'auto' ? languageProfileFor(o.locale) : detectLanguageProfile(text);
+  // 省略号模式要按「文档的归一化规则」归一，否则匹配不到归一化后的文本。
   //
   // 但**不含 `ignorePunctuation`**：省略表达是自己人，它的形态不能被标点策略改写 ——
   // 既然上面把它放进了保护区（原文保留），这里的切分正则就必须照样指着原文形态，
@@ -310,7 +310,8 @@ function resolve(input: MatchOptions, pageContent: string): ResolvedOptions {
   const ellipsisPatterns = o.ellipsis ?? DEFAULT_ELLIPSIS;
   return {
     locale,
-    markdown: o.markdown,
+    // null = 调用方显式强制纯文本（类型上与 undefined 同义）
+    markdown: o.markdown ?? undefined,
     excerptIsMarkdown: o.excerptIsMarkdown ?? false,
     trimMd: o.trimMarkdownEdges ?? false,   // 精确优先：不修剪
     expand: o.expandMarkers ?? true,
@@ -398,17 +399,17 @@ function withBlockInfo(
  *    转义（`\*` → `*`）与实体（`&amp;` → `&`）让一个可见字符横跨多个源码字符。
  * 2. md 模式下再向两侧补齐完整的行内标记，避免切出 `被告**的行为` 这种半截片段。
  *
- * @param pageContent 原始内容，用于字形簇对齐
+ * @param text 原始内容，用于字形簇对齐
  * @param hay 归一化索引（含 `map` / `mapEnd`）
  * @param start 归一化空间起始下标（含）
  * @param end 归一化空间结束下标（不含）
  * @param opts.trimMd 是否修剪首尾的 md 语法标记
  * @param opts.expand 是否扩展到完整的行内标记
  * @param opts.flat 摊平结果，`expand` 为 true 时必需
- * @returns `{ index, length }`，`pageContent.slice(index, index + length)` 即命中片段
+ * @returns `{ index, length }`，`text.slice(index, index + length)` 即命中片段
  */
 export function spanFromNormalized(
-  pageContent: string,
+  text: string,
   hay: NormalizedText,
   start: number,
   end: number,
@@ -430,8 +431,8 @@ export function spanFromNormalized(
     srcEnd = ex.end;
   }
 
-  const sp = snapToGraphemeBoundary(pageContent, srcStart, srcEnd - srcStart);
-  return opts.trimMd ? trimMarkdownEdges(pageContent, sp.index, sp.length) : sp;
+  const sp = snapToGraphemeBoundary(text, srcStart, srcEnd - srcStart);
+  return opts.trimMd ? trimMarkdownEdges(text, sp.index, sp.length) : sp;
 }
 
 /**
@@ -480,9 +481,9 @@ const EDGE_PUNCT = /[\p{P}\p{Z}]/u;
  * 直接拿 span 与摘录比，会出两种错：
  *
  * - 「两边其实都有句号」→ span 侧没有 → **误报**差异（全半角本就不算差异）
- * - 「页面是冒号、摘录是句号」→ 真差异恰好落在边缘 → **漏报**
+ * - 「文档是冒号、摘录是句号」→ 真差异恰好落在边缘 → **漏报**
  *
- * 把页面侧补上紧邻的标点，两种错同时消失：有就有、是什么就是什么。
+ * 把文档侧补上紧邻的标点，两种错同时消失：有就有、是什么就是什么。
  * 摘录侧保持原样 —— 它的标点有没有、是什么，本身就是要比对的内容。
  *
  * 两条止步规则：
@@ -537,12 +538,12 @@ function hitBlockBounds(blocks: readonly FlatBlock[] | undefined, start: number,
  * 判断命中是否**跨越了标点差异**。
  *
  * 做法：两侧各自按 `ignorePunctuation: false` 重新归一化再比较 ——
- * 页面侧是「span + 紧邻的边缘标点」（不跨块，见 `spanWithEdgePunctuation`），
+ * 文档侧是「span + 紧邻的边缘标点」（不跨块，见 `spanWithEdgePunctuation`），
  * 摘录侧保持原样。不同 → 说明是「忽略标点」才匹配上的，即跨越了差异。
  *
  * @remarks
  * 两侧**不对称**是刻意的：摘录的标点有没有、是什么，本身就是要比对的内容，
- * 所以不能像页面侧那样补边缘；页面侧必须补，因为归一化把它的首尾标点
+ * 所以不能像文档侧那样补边缘；文档侧必须补，因为归一化把它的首尾标点
  * 当可选分隔符删掉了（推演见 `spanWithEdgePunctuation` 的注释）。
  *
  * **为什么不用「片段里是否有标点被折叠」**：那样只要开了选项就会全部标 true。
@@ -561,7 +562,7 @@ function punctuationDiverges(
 ): boolean {
   if (!r.ignorePunctuation) return false;
   const strict = { ...toNormalizationOptions(r), ignorePunctuation: false };
-  // 页面侧 = span + 紧邻的边缘标点（不跨块）；摘录侧 = 原样。两边都过 strict 归一化后比较。
+  // 文档侧 = span + 紧邻的边缘标点（不跨块）；摘录侧 = 原样。两边都过 strict 归一化后比较。
   // 全半角这类宽度差异本就不算差异 —— strict 归一化里的 ignoreWidth 负责折掉它们。
   const rawSpan = spanWithEdgePunctuation(view, start, end);
   const pageSide = normalizeWithMap(rawSpan, strict).text;
@@ -592,18 +593,18 @@ function findSegmented(hay: NormalizedText, needle: string, r: ResolvedOptions):
  * 文本索引：预建好的归一化视图，供多次 {@link TextIndex.locate} 复用。
  *
  * @remarks
- * 页面归一化（含 md 摊平）是 O(n) 的重活。逐条摘录调用 {@link locateExcerpt}
- * 会对同一页面重复整页处理。实测 600KB 页面：单次 ~200ms，复用索引后 ~7ms。
+ * 整篇归一化（含 md 摊平）是 O(n) 的重活。逐条摘录调用 {@link locateExcerpt}
+ * 会对同一篇文本重复整篇处理。实测 600KB 文本：单次 ~200ms，复用索引后 ~7ms。
  *
  * @example
  * ```ts
- * const idx = createTextIndex(page, { markdown: md });
+ * const idx = createTextIndex(text, { markdown: md });
  * for (const it of items) console.log(idx.locate(it.excerpt));
  * ```
  *
  * @remarks
  * 命名说明：它索引的是**文本**（可以是 md 源码，也可以是纯文本），
- * 不是"页面" —— 旧名 `PageIndex` 容易让人联想到页码，故改名。
+ * 没有分页的概念 —— 故名 `TextIndex` 而非暗示页码的名字。
  */
 export interface TextIndex {
   /** 原始内容（md 源码或纯文本） */
@@ -621,8 +622,7 @@ export interface TextIndex {
   /**
    * 建索引时实际生效的归一化选项。
    *
-   * @remarks
-   * **摘录侧必须用同一套选项归一化**，否则摘录与页面不在同一个空间里，
+   * @remarks    * **摘录侧必须用同一套选项归一化**，否则摘录与文档不在同一个空间里，
    * 怎么匹配都对不上。`locateSemantic` 用它来归一化摘录。
    */
   readonly normalizeOptions: NormalizeOptions;
@@ -631,26 +631,19 @@ export interface TextIndex {
   readonly blocks: readonly FlatBlock[];
 
   /**
-   * 在该页面中定位一条摘录。
-   * @param excerpt 摘录文本（默认来自渲染后的页面）
+   * 在该文本中定位一条摘录。
+   * @param excerpt 摘录文本（默认来自渲染后的文档）
    * @returns 统一形状的结果，未命中为 {@link NO_MATCH}
    */
   locate(excerpt: string): ExcerptMatch;
 }
 
 /**
- * 兼容旧名。
- *
- * @deprecated 用 {@link createTextIndex} —— 它索引的是文本，不是"页面"。
- */
-export type PageIndex = TextIndex;
-
-/**
  * 建索引并复用。
  *
- * 一个页面查多条摘录时**必须**用它 —— 否则每条摘录都会重跑整页归一化与 md 摊平。
+ * 同一篇文本查多条摘录时**必须**用它 —— 否则每条摘录都会重跑整页归一化与 md 摊平。
  *
- * @param pageContent 页面正文（md 源码或纯文本）
+ * @param text 文档内容（md 源码或纯文本）
  * @param options 匹配选项，见 {@link MatchOptions}
  * @returns 文本索引，见 {@link TextIndex}
  *
@@ -665,14 +658,14 @@ export type PageIndex = TextIndex;
  * 单次查询用 {@link locateExcerpt} 即可；**多次查询同一份文本时才需要它**。
  * 实测 800 段 md：复用 1.96ms / 次，每次重建 165.5ms —— 约 80 倍。
  */
-export function createTextIndex(pageContent: string, options: MatchOptions = {}): TextIndex {
-  const r = resolve(options, pageContent);
+export function createTextIndex(text: string, options: MatchOptions = {}): TextIndex {
+  const r = resolve(options, text);
   let cached: Built | null = null;
-  const built = (): Built => (cached ??= buildHay(pageContent, r));
+  const built = (): Built => (cached ??= buildHay(text, r));
   const norm = (): NormalizedText => built().strict.norm;
 
   return {
-    raw: pageContent,
+    raw: text,
     // 摘录侧要用同一套选项归一化，否则两边不在同一个空间里（见 locateSemantic）
     normalizeOptions: toNormalizationOptions(r),
     get text(): string {
@@ -685,13 +678,13 @@ export function createTextIndex(pageContent: string, options: MatchOptions = {})
       return built().blocks;
     },
     locate(excerpt: string): ExcerptMatch {
-      return locateIn(excerpt, pageContent, built(), r);
+      return locateIn(excerpt, text, built(), r);
     },
   };
 }
 
 /**
- * 在页面中定位摘录，返回 md 源码（或原文）中的精确坐标。
+ * 在文档文本中定位摘录，返回 md 源码（或原文）中的精确坐标。
  *
  * 分层依次尝试，命中即返回：
  * 1. **T0 exact** —— 在可见文本上逐字符比对
@@ -702,15 +695,15 @@ export function createTextIndex(pageContent: string, options: MatchOptions = {})
  * 两个视图（严格 / 无分隔符）的候选一起比较，**位置优先于强度** ——
  * 保证返回的是「第一个」命中，而不是碰巧短路在某个更靠后的字面匹配上。
  *
- * @param excerpt 摘录文本。默认视为用户从渲染后页面复制的纯文本；
+ * @param excerpt 摘录文本。默认视为用户从渲染后文档复制的纯文本；
  *                若来自 md 源码，请设 {@link MatchOptions.excerptIsMarkdown} 为 true
- * @param pageContent 页面正文（md 源码或纯文本）
+ * @param text 文档内容（md 源码或纯文本）
  * @param options 匹配选项，见 {@link MatchOptions}
  * @returns 统一形状的结果，见 {@link ExcerptMatch}。未命中为 {@link NO_MATCH}
  *
  * @example 纯文本
  * ```ts
- * locateExcerpt('本院认为，被告构成违约', page);
+ * locateExcerpt('本院认为，被告构成违约', text);
  * ```
  *
  * @example markdown
@@ -723,10 +716,10 @@ export function createTextIndex(pageContent: string, options: MatchOptions = {})
  * locateExcerpt(ex, mdSource, { markdown: md, fallbacks: [fuzzy], minFallbackScore: 0.85 });
  * ```
  */
-export function locateExcerpt(excerpt: string, pageContent: string, options: MatchOptions = {}): ExcerptMatch {
-  if (!excerpt || !pageContent) return NO_MATCH;
-  const r = resolve(options, pageContent);
-  return locateIn(excerpt, pageContent, buildHay(pageContent, r), r);
+export function locateExcerpt(excerpt: string, text: string, options: MatchOptions = {}): ExcerptMatch {
+  if (!excerpt || !text) return NO_MATCH;
+  const r = resolve(options, text);
+  return locateIn(excerpt, text, buildHay(text, r), r);
 }
 
 /** 参与匹配的视图：严格视图 + 无分隔符视图（后者可能不存在） */
@@ -748,7 +741,7 @@ function strength(m: ExcerptMatch): number {
  * 严格视图与无分隔符视图共用这段逻辑，保证两者行为一致。
  */
 function tryDirect(
-  pageContent: string,
+  text: string,
   needle: string,
   excerptRendered: string,
   view: View,
@@ -758,7 +751,7 @@ function tryDirect(
   const at = view.norm.text.indexOf(needle);
   if (at >= 0) {
     return {
-      ...spanFromNormalized(pageContent, view.norm, at, at + needle.length, spanOpts(r, flat)),
+      ...spanFromNormalized(text, view.norm, at, at + needle.length, spanOpts(r, flat)),
       kind: 'normalized',
       score: 1,
       occurrences: countOccurrences(view.norm.text, needle),
@@ -769,7 +762,7 @@ function tryDirect(
     const seg = findSegmented(view.norm, needle, r);
     if (seg) {
       return {
-        ...spanFromNormalized(pageContent, view.norm, seg.start, seg.end, spanOpts(r, flat)),
+        ...spanFromNormalized(text, view.norm, seg.start, seg.end, spanOpts(r, flat)),
         kind: 'segmented',
         score: 1,
         occurrences: 1,
@@ -812,7 +805,7 @@ function pickBestFallbackCandidate(
       for (const c of cands) {
         if (c.score < r.minFallbackScore) continue;
         if (need) {
-          // 只比较命中 span 内的原文，不用全文 —— 页面别处有「不」很正常
+          // 只比较命中 span 内的原文，不用全文 —— 文档别处有「不」很正常
           const inSpan = view.norm.text.slice(c.start, c.end);
           if (negationsConflict(need, detectNegation(inSpan, r.negationLexicon))) continue;
         }
@@ -826,12 +819,12 @@ function pickBestFallbackCandidate(
 
 function locateIn(
   excerpt: string,
-  pageContent: string,
+  text: string,
   built: Built,
   r: ResolvedOptions
 ): ExcerptMatch {
   const flat = built.flat ?? undefined;
-  if (!excerpt || !pageContent) return NO_MATCH;
+  if (!excerpt || !text) return NO_MATCH;
 
   const cands: ExcerptMatch[] = [];
 
@@ -847,8 +840,8 @@ function locateIn(
       const m = withBlockInfo(
         {
           ...(v.rawIdx
-            ? spanFromNormalized(pageContent, v.rawIdx, at, at + excerpt.length, spanOpts(r, flat))
-            : snapToGraphemeBoundary(pageContent, at, excerpt.length)),
+            ? spanFromNormalized(text, v.rawIdx, at, at + excerpt.length, spanOpts(r, flat))
+            : snapToGraphemeBoundary(text, at, excerpt.length)),
           kind: 'exact',
           score: 1,
           occurrences: countOccurrences(v.raw, excerpt),
@@ -861,14 +854,14 @@ function locateIn(
       if (m) cands.push(m);
     }
     if (cands.length === 0 && !flat) {
-      // 纯文本模式：可见文本就是 pageContent，上面已覆盖；这里仅兜底
-      const raw = pageContent.indexOf(excerpt);
+      // 纯文本模式：可见文本就是 text，上面已覆盖；这里仅兜底
+      const raw = text.indexOf(excerpt);
       if (raw >= 0) {
         cands.push({
-          ...snapToGraphemeBoundary(pageContent, raw, excerpt.length),
+          ...snapToGraphemeBoundary(text, raw, excerpt.length),
           kind: 'exact',
           score: 1,
-          occurrences: countOccurrences(pageContent, excerpt),
+          occurrences: countOccurrences(text, excerpt),
           punctFolded: false,
         });
       }
@@ -877,7 +870,7 @@ function locateIn(
 
   // 摘录侧：默认视为渲染后的纯文本；只有明确说来自 md 源码才摊平
   const excerptBase = r.excerptIsMarkdown && r.markdown ? r.markdown.flatten(excerpt) : excerpt;
-  // 判定 punctFolded 时要拿**渲染后**的摘录文本与页面片段比，
+  // 判定 punctFolded 时要拿**渲染后**的摘录文本与文档片段比，
   // 若摘录来自 md 源码需先摊平，否则语法标记会被算进差异
   const excerptRendered = typeof excerptBase === 'string' ? excerptBase : excerptBase.text;
   const needle = normalizeWithMap(excerptBase, toNormalizationOptions(r)).text;
@@ -885,7 +878,7 @@ function locateIn(
   if (needle.length > 0 && cands.length === 0) {
     // T1/T2：严格视图与无分隔符视图都试，取最早
     for (const v of collectSearchableViews(built)) {
-      const m = tryDirect(pageContent, needle, excerptRendered, v, r, flat);
+      const m = tryDirect(text, needle, excerptRendered, v, r, flat);
       if (m) {
         const ok = withBlockInfo(m, flat, r);
         if (ok) cands.push(ok);
@@ -911,7 +904,7 @@ function locateIn(
     if (best) {
       const m = withBlockInfo(
         {
-          ...spanFromNormalized(pageContent, best.view.norm, best.c.start, best.c.end, spanOpts(r, flat)),
+          ...spanFromNormalized(text, best.view.norm, best.c.start, best.c.end, spanOpts(r, flat)),
           kind: best.kind,
           score: best.c.score,
           occurrences: 1,
@@ -928,7 +921,4 @@ function locateIn(
   return NO_MATCH;
 }
 
-/**
- * @deprecated 用 {@link createTextIndex}。旧名暗示"页面"，但它索引的是文本。
- */
-export const createPageIndex = createTextIndex;
+

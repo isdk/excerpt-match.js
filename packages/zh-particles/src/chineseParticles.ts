@@ -195,7 +195,7 @@ export interface JiebaTaggerOptions {
  * ```ts
  * import * as jieba from '@isdk/nlp-jieba';
  * const tagger = createJiebaParticleTagger(jieba);
- * locateExcerpt(ex, page, { markdown: md, ignoreParticles: tagger });
+ * locateExcerpt(ex, text, { markdown: md, ignoreParticles: tagger });
  * ```
  *
  * @remarks

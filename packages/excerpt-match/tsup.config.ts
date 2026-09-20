@@ -12,7 +12,7 @@ export default defineConfig({
   sourcemap: true,
   target: 'es2022',
   /**
-   * 可选依赖一律 external。
+   * 运行时依赖一律 external。
    *
    * 尤其 `@isdk/nlp-jieba`：它的 nodejs 版是运行时
    * `fs.readFileSync(__dirname + '/jieba_bg.wasm')` 加载二进制，
@@ -22,6 +22,10 @@ export default defineConfig({
    * 注意：esbuild-plugin-wasm 解决不了这个问题 —— 它处理的是
    * `import wasm from './x.wasm'` 这种 ESM import 语句，
    * 对 readFileSync 无能为力，且只支持 esm 输出格式。
+   *
+   * `cjk-number` 与 `diff-match-patch-es` 是纯 ESM 包，也不该打进来：
+   * 由 defaults.ts 惰性 require（见其文件头说明），旧 Node 的 CJS 产物
+   * 加载不到时按「无此默认」降级，而不是让整个包崩溃。
    */
   external: [
     'diff-match-patch',

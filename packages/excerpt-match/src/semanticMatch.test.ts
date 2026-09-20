@@ -51,10 +51,10 @@ function recording(): { matcher: FallbackMatcher; seen: Seen[] } {
 }
 
 describe('★ T4 摘录侧必须用与页面相同的归一化选项', () => {
-  const PAGE = '本院认为，被告构成违约，应当承担赔偿责任。';
+  const DOC = '本院认为，被告构成违约，应当承担赔偿责任。';
 
   it('★ 页面开了 ignorePunctuation 时，摘录也要跟着折叠', async () => {
-    const idx = createTextIndex(PAGE, { ignorePunctuation: true });
+    const idx = createTextIndex(DOC, { ignorePunctuation: true });
     const { matcher, seen } = recording();
 
     const hit = await locateSemantic(idx, '本院认为，被告构成违约', allSegments, {
@@ -70,7 +70,7 @@ describe('★ T4 摘录侧必须用与页面相同的归一化选项', () => {
   });
 
   it('关闭 ignorePunctuation 时，标点只做宽度折叠、不被删除', async () => {
-    const idx = createTextIndex(PAGE, { ignorePunctuation: false });
+    const idx = createTextIndex(DOC, { ignorePunctuation: false });
     const { matcher, seen } = recording();
 
     await locateSemantic(idx, '本院认为，被告构成违约', allSegments, { aligner: matcher });
@@ -79,7 +79,7 @@ describe('★ T4 摘录侧必须用与页面相同的归一化选项', () => {
   });
 
   it('★ 未开该选项时页面侧保留标点，两者仍然同空间', async () => {
-    const idx = createTextIndex(PAGE, { ignorePunctuation: false });
+    const idx = createTextIndex(DOC, { ignorePunctuation: false });
     const { matcher } = recording();
     const hit = await locateSemantic(idx, '本院认为，被告构成违约', allSegments, {
       aligner: matcher,
@@ -130,8 +130,8 @@ describe('★ 交给 aligner 的 NormalizedText 必须是该段的切片', () =>
   });
 
   it('★ 纯文本模式下同样成立', async () => {
-    const page = '第一段内容平平。第二段含有目标词。第三段同样平平。';
-    const idx = createTextIndex(page);
+    const doc = '第一段内容平平。第二段含有目标词。第三段同样平平。';
+    const idx = createTextIndex(doc);
     const { matcher, seen } = recording();
 
     await locateSemantic(idx, '目标词', allSegments, { aligner: matcher });

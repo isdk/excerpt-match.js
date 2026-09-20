@@ -15,9 +15,9 @@ import type { MatchOptions } from './types';
  *
  * @example
  * ```ts
- * locateExcerpt(ex, page, { preset: 'strict' });
+ * locateExcerpt(ex, text, { preset: 'strict' });
  * // 需要微调时，显式项覆盖预设
- * locateExcerpt(ex, page, { preset: 'loose', ignorePunctuation: false });
+ * locateExcerpt(ex, text, { preset: 'loose', ignorePunctuation: false });
  * ```
  */
 export type PresetName = 'strict' | 'default' | 'loose';

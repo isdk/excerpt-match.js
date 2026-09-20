@@ -29,7 +29,7 @@
  * ```ts
  * import { locateSemantic } from '@isdk/semantic-locate';
  *
- * const hit = await locateSemantic(page, excerpt, myRetriever, {
+ * const hit = await locateSemantic(text, excerpt, myRetriever, {
  *   aligner: (ex, seg) => approxFind.find(ex, seg)?.[0] ?? null,
  *   checkPolarity: true,
  * });

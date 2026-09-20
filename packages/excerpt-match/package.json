@@ -27,56 +27,32 @@
     "@isdk/approx-text-match": "workspace:*",
     "@isdk/identifier-variants": "workspace:*",
     "@isdk/md-flatten": "workspace:*",
+    "@isdk/nlp-jieba": "^2.2.2",
     "@isdk/normalize-text": "workspace:*",
     "@isdk/semantic-locate": "workspace:*",
     "@isdk/whitespace-semantics": "workspace:*",
     "@isdk/zh-negation": "workspace:*",
     "@isdk/zh-particles": "workspace:*",
-    "secondary-cache": "^2.1.2"
-  },
-  "peerDependencies": {
-    "@isdk/nlp-jieba": "^2.2.2",
-    "cjk-number": ">=0.2.0",
-    "diff-match-patch": "^1.0.5",
+    "cjk-number": "^1.0.0",
     "diff-match-patch-es": "^2.0.1",
     "mdast-util-from-markdown": "^2.0.2",
     "mdast-util-gfm": "^3.0.0",
-    "micromark-extension-gfm": "^3.0.0"
+    "micromark-extension-gfm": "^3.0.0",
+    "secondary-cache": "^2.1.2"
+  },
+  "peerDependencies": {
+    "diff-match-patch": "^1.0.5"
   },
   "peerDependenciesMeta": {
     "diff-match-patch": {
-      "optional": true
-    },
-    "mdast-util-from-markdown": {
-      "optional": true
-    },
-    "mdast-util-gfm": {
-      "optional": true
-    },
-    "micromark-extension-gfm": {
-      "optional": true
-    },
-    "diff-match-patch-es": {
-      "optional": true
-    },
-    "@isdk/nlp-jieba": {
-      "optional": true
-    },
-    "cjk-number": {
       "optional": true
     }
   },
   "devDependencies": {
     "@isdk/match-ex": "^0.1.2",
-    "@isdk/nlp-jieba": "^2.2.2",
     "@types/diff-match-patch": "^1.0.32",
     "@types/node": "^20.11.0",
-    "cjk-number": "^1.0.0",
     "diff-match-patch": "^1.0.5",
-    "diff-match-patch-es": "^2.0.1",
-    "mdast-util-from-markdown": "^2.0.2",
-    "mdast-util-gfm": "^3.0.0",
-    "micromark-extension-gfm": "^3.0.0",
     "tsup": "^8.0.0",
     "typescript": "^5.3.0",
     "vitest": "^1.2.0"

@@ -119,26 +119,26 @@ describe('字形簇不变量', () => {
 
 describe('定位不变量', () => {
   it('命中时 slice(index, index+length) 恒为源码子串', () => {
-    const pages = [
+    const docs = [
       '本院认为被告构成根本违约。',
       '使用 **TensorFlow** 框架',
       '前缀👨‍👩‍👧‍👦后缀',
       '甲\n\n乙\n\n丙',
     ];
-    for (const page of pages) {
+    for (const doc of docs) {
       // 按「字形簇」生成摘录，而不是按 UTF-16 下标 ——
       // 后者会切出孤立代理对（半个字符），那不是合法摘录
-      const clusters = [...new Intl.Segmenter('en', { granularity: 'grapheme' }).segment(page)].map(
+      const clusters = [...new Intl.Segmenter('en', { granularity: 'grapheme' }).segment(doc)].map(
         (c) => c.segment
       );
       for (let i = 0; i < clusters.length; i++) {
         for (let len = 1; len <= Math.min(4, clusters.length - i); len++) {
           const ex = clusters.slice(i, i + len).join('');
-          const r = locateExcerpt(ex, page);
+          const r = locateExcerpt(ex, doc);
           if (!isHit(r)) continue;
           expect(r.index).toBeGreaterThanOrEqual(0);
-          expect(r.index + r.length).toBeLessThanOrEqual(page.length);
-          expect(page.slice(r.index, r.index + r.length)).toBe(ex);
+          expect(r.index + r.length).toBeLessThanOrEqual(doc.length);
+          expect(doc.slice(r.index, r.index + r.length)).toBe(ex);
         }
       }
     }
@@ -146,11 +146,11 @@ describe('定位不变量', () => {
 
   it('摘录切在字形簇中间时，span 扩展到完整簇而非半个字符', () => {
     // 刻意行为：切出孤立代理对没有意义，扩展成完整簇才可渲染
-    const page = '前缀👨‍👩‍👧‍👦后缀';
-    const broken = page.slice(3, 4); // 家庭簇内部的半个码元
-    const r = locateExcerpt(broken, page);
+    const doc = '前缀👨‍👩‍👧‍👦后缀';
+    const broken = doc.slice(3, 4); // 家庭簇内部的半个码元
+    const r = locateExcerpt(broken, doc);
     if (isHit(r)) {
-      const span = page.slice(r.index, r.index + r.length);
+      const span = doc.slice(r.index, r.index + r.length);
       // 不得包含孤立代理对
       const loneSurrogate = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])/;
       expect(loneSurrogate.test(span)).toBe(false);
@@ -165,19 +165,19 @@ describe('定位不变量', () => {
     expect(r.score).toBe(0);
   });
 
-  it('空摘录与空页面不抛异常', () => {
+  it('空摘录与空文本不抛异常', () => {
     expect(locateExcerpt('', '本院认为').kind).toBe('none');
     expect(locateExcerpt('本院', '').kind).toBe('none');
     expect(locateExcerpt('', '').kind).toBe('none');
   });
 
-  it('PageIndex 复用后结果与直接调用一致', () => {
-    const page = '本院认为被告构成根本违约，应当依法履行义务。';
-    const idx = createTextIndex(page);
+  it('TextIndex 复用后结果与直接调用一致', () => {
+    const doc = '本院认为被告构成根本违约，应当依法履行义务。';
+    const idx = createTextIndex(doc);
     for (let at = 0; at < 10; at++) {
-      const ex = page.slice(at, at + 6);
-      expect(locateExcerpt(ex, page)).toEqual(locateExcerpt(ex, page));
-      // PageIndex 可被构造且可复用
+      const ex = doc.slice(at, at + 6);
+      expect(locateExcerpt(ex, doc)).toEqual(locateExcerpt(ex, doc));
+      // TextIndex 可被构造且可复用
       expect(idx.text.length).toBeGreaterThan(0);
     }
   });

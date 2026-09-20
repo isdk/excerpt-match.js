@@ -248,7 +248,7 @@ pnpm run build       # pnpm -r，按拓扑顺序构建各包
 **显式项永远覆盖预设**：
 
 ```ts
-locateExcerpt(ex, page, { preset: 'loose', ignorePunctuation: false });
+locateExcerpt(ex, text, { preset: 'loose', ignorePunctuation: false });
 ```
 
 最后两行（三档一致）是刻意的安全底线：
@@ -303,5 +303,8 @@ md.flattenById(doc, 'doc-42');  // 推荐
 |---|---|---|
 | `createPageIndex` | **`createTextIndex`** | 它索引的是文本，不是"页面"；旧名易联想到页码 |
 | `PageIndex` | `TextIndex` | 同上 |
+| `verifyExcerptFromPage` | **`matchExcerpt`** | 输入是文档文本，没有页的概念；且升级为 T0–T4 全档位、结果含完整元数据 |
+| `locateExcerptFromPage` | （并入 `matchExcerpt`） | 统一结果已包含全部元数据，不需要两个变体 |
+| `createExcerptVerifier` | **`createExcerptMatcher`** | 与 `matchExcerpt` 同组命名；`.check()` 收敛为 `.match()` |
 
-旧名保留为 `@deprecated` 别名，**不破坏现有调用**。
+`createPageIndex` / `PageIndex` 曾保留为 `@deprecated` 别名，现已随 1.x 早期移除。

@@ -167,14 +167,14 @@ const ENGLISH_NEGATION_SUFFIX = "n't";
  *
  * @example 让「未来」也视为否定（口语稿场景）
  * ```ts
- * locateExcerpt(ex, page, {
+ * locateExcerpt(ex, text, {
  *   negationLexicon: { negations: ['未来'] },
  * })
  * ```
  *
  * @example 让某词永远不算否定（产品名、术语）
  * ```ts
- * locateExcerpt(ex, page, {
+ * locateExcerpt(ex, text, {
  *   negationLexicon: { nonNegations: ['无限制', '非凡'] },
  * })
  * ```

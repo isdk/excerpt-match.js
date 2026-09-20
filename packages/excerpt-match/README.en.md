@@ -2,7 +2,7 @@
 
 English | [中文](./README.md)
 
-Determine whether an excerpt comes from a page's body text, and locate its
+Determine whether an excerpt comes from a document's body text, and locate its
 **exact position and length in the source (markdown) content**.
 
 Tiered matching, language-agnostic, zero-dependency core.
@@ -11,8 +11,8 @@ Tiered matching, language-agnostic, zero-dependency core.
 
 ## The problem it solves
 
-`pageContent` is markdown **source**, while the excerpt was copied by a user from the
-**rendered page**. A rendering step sits between them:
+`text` is markdown **source**, while the excerpt was copied by a user from the
+**rendered document**. A rendering step sits between them:
 
 ```
 md source : 本院**认为**被告构成[根本违约](http://x.com)。
@@ -25,14 +25,18 @@ This library first flattens the markdown into "text visible after rendering" whi
 **keeping an exact per-character mapping back to the source**, so it can both match
 against visible text and return source coordinates.
 
+> **Terminology**: this library works on **one document** (markdown source or plain
+> text); there is no notion of pages or pagination. "Rendered document" below means
+> what the source renders to — that is where excerpts are copied from.
+
 ## Presets
 
 Most of the 25 options are scene-dependent; you should not re-weigh them at
 every call site. Pick a `preset` once — **explicit options override it**:
 
 ```ts
-locateExcerpt(ex, page, { preset: 'strict' });
-locateExcerpt(ex, page, { preset: 'loose', ignorePunctuation: false });
+locateExcerpt(ex, text, { preset: 'strict' });
+locateExcerpt(ex, text, { preset: 'loose', ignorePunctuation: false });
 ```
 
 | preset | for | trade-off |
@@ -48,34 +52,57 @@ string (a source of false hits), the second is a typo, not a semantic equivalenc
 ## Quick start
 
 ```bash
-npm install
+npm install @isdk/excerpt-match
 ```
 
+The high-level entry works with **zero configuration** — markdown flattening
+(mdast + GFM), the T3 fuzzy tier (diff-match-patch-es) and the like are shipped as
+mandatory dependencies and assembled automatically:
+
 ```ts
-import { locateExcerpt } from './src';
+import { matchExcerpt } from '@isdk/excerpt-match';
+
+const r = await matchExcerpt('本院认为，被告的行为构成违约', mdSource);
+
+if (r.found) {
+  // The coordinate contract always holds; source is the citable markdown snippet
+  console.log(r.kind, r.score, mdSource.slice(r.index, r.index + r.length));
+}
+```
+
+When matching **many** excerpts against one document, always reuse the index
+(see [Performance](#performance)):
+
+```ts
+import { createExcerptMatcher } from '@isdk/excerpt-match';
+
+const m = await createExcerptMatcher(mdSource);
+for (const it of items) it.ok = (await m.match(it.excerpt)).found;
+```
+
+For coordinates only, the sync entry is `locateExcerpt` — it keeps a
+**zero-dependency core with explicit injection**:
+
+```ts
+import { locateExcerpt } from '@isdk/excerpt-match';
 import { createMdastFlattener } from '@isdk/md-flatten';
 import { fromMarkdown } from 'mdast-util-from-markdown';
 import { gfm } from 'micromark-extension-gfm';
 import { gfmFromMarkdown } from 'mdast-util-gfm';
 
-// 1) Build the flattener (required for markdown)
+// The flattener is passed explicitly (the low-level API does not auto-assemble)
 const md = createMdastFlattener(fromMarkdown, {
   extensions: [gfm()],
   mdastExtensions: [gfmFromMarkdown()],
 });
 
-// 2) Locate
 const r = locateExcerpt('本院认为，被告的行为构成违约', mdSource, { markdown: md });
 
 if (r.kind !== 'none') {
-  // The coordinate contract always holds
   const span = mdSource.slice(r.index, r.index + r.length);
   console.log(r.kind, r.score, span);
 }
 ```
-
-When matching **many** excerpts against one page, always reuse the index
-(see [Performance](#performance)).
 
 ## Return contract
 
@@ -83,7 +110,7 @@ Hit or miss, the shape is the same — it **never returns `null`**:
 
 ```ts
 interface ExcerptMatch {
-  index: number;           // start offset within pageContent
+  index: number;           // start offset within text
   length: number;          // slice(index, index + length) is the matched span
   kind: MatchKind;         // which tier matched
   score: number;           // 0..1, 1 = exact
@@ -95,7 +122,7 @@ interface ExcerptMatch {
 
 On miss: `{ kind: 'none', index: -1, length: 0, score: 0 }` (i.e. `MISS`).
 
-> Why not `null`: "does this come from the page?" is not a boolean — it is a tiered
+> Why not `null`: "does this come from the document?" is not a boolean — it is a tiered
 > conclusion with confidence. Returning `null` throws away the most valuable signal,
 > the *near miss*, which is exactly what OCR noise, layout drift, or light rewording
 > look like.
@@ -107,12 +134,14 @@ On miss: `{ kind: 'none', index: -1, length: 0, score: 0 }` (i.e. `MISS`).
 | T0 | `exact` | nothing | `indexOf` on visible text |
 | T1 | `normalized` | whitespace / full-width / punctuation / case / zero-width | built-in normalization |
 | T2 | `segmented` | ellipsis in the excerpt (`……`) | built-in anchor chain |
-| T3 | `fuzzy` | typos, insertions, deletions | external matcher (diff-match-patch) |
+| T3 | `fuzzy` | typos, insertions, deletions | built-in by default (diff-match-patch-es); injectable |
 | T4 | `semantic` | paraphrase, synonym rewriting | external retriever (embedding / BM25) |
 | — | `none` | — | no match |
 
-**T3 / T4 are off by default**: without `fallbacks` there is no fuzzy matching at all.
-Strict scenarios (citation verification, forensics) get purely deterministic results.
+**T3 / T4 switches**: the high-level entry (`matchExcerpt`) injects the built-in T3
+fuzzy matcher by default — pass `preset: 'strict'` or an explicit `fallbacks: []` to
+turn it off; the low-level entry (`locateExcerpt`) never fuzzy-matches without
+`fallbacks`. T4 only ever happens when a `retriever` is given.
 
 ### Choosing a configuration
 
@@ -124,7 +153,7 @@ Strict scenarios (citation verification, forensics) get purely deterministic res
 
 ## Coordinate contract
 
-`index` / `length` are **exact offsets and lengths within `pageContent`**.
+`index` / `length` are **exact offsets and lengths within `text`**.
 
 - In markdown mode `length` is the **source length** (markup included), which is larger
   than the rendered character count: the excerpt `被告的行为已经构成根本违约` is 13
@@ -142,7 +171,7 @@ If an excerpt starts or ends *inside* an inline construct (e.g. it stops midway 
 `[根本违约](url)` at `根本`), exactness and standalone renderability cannot both hold —
 appending `](url)` adds `违约`, omitting it leaves a broken link.
 This library chooses **exactness**; if you need a renderable fragment, expand it
-yourself using `PageIndex.blocks`.
+yourself using `TextIndex.blocks`.
 
 ## Markdown flattening
 
@@ -220,9 +249,9 @@ copy : 第一段末尾内容。第二段开头内容。
 ```
 
 The general case: excerpts spanning a heading, a paragraph, a code block, list
-items — anything that **looks continuous in the rendered page but is separated
+items — anything that **looks continuous in the rendered document but is separated
 by block boundaries in the source** (see "What is a block?" above). Copying
-starts from the rendered page, which has no notion of blocks.
+starts from the rendered document, which has no notion of blocks.
 
 Block separators are a typographic artifact we insert, not content. So in addition to
 the strict view, a **separator-free view** is derived, and both participate in matching.
@@ -265,13 +294,13 @@ customizable, multiple patterns supported:
 import { DEFAULT_ELLIPSIS } from './src';
 
 // Replace the defaults
-locateExcerpt(ex, page, { ellipsis: ['〔中略〕', /\[\s*snip\s*\]/] });
+locateExcerpt(ex, text, { ellipsis: ['〔中略〕', /\[\s*snip\s*\]/] });
 
 // Keep defaults and append
-locateExcerpt(ex, page, { ellipsis: [...DEFAULT_ELLIPSIS, '〔中略〕'] });
+locateExcerpt(ex, text, { ellipsis: [...DEFAULT_ELLIPSIS, '〔中略〕'] });
 
 // Disable T2
-locateExcerpt(ex, page, { ellipsis: [] });
+locateExcerpt(ex, text, { ellipsis: [] });
 ```
 
 Strings match as **literals** (escaped internally, so `'...'` is not treated as a
@@ -293,7 +322,7 @@ and `occurrences` reports the total so callers can detect ambiguity.
 This is the easiest trap in the whole library. Measured:
 
 ```
-page   : 前缀人工智能正在改变世界后缀
+doc    : 前缀人工智能正在改变世界后缀
 excerpt A : 人工智能在改变世界     0.947  ← equivalent, accept
 excerpt B : 人工智能没在改变世界   0.900  ← opposite, reject
 ```
@@ -317,12 +346,12 @@ checkPolarity: true (default)
 
 Three details:
 
-- **Compare only the text inside the hit span**, not the whole page. A "not" elsewhere
+- **Compare only the text inside the hit span**, not the whole document. A "not" elsewhere
   in the document is normal and must not affect the verdict.
 - **Compare parity, not wording.** `不去` and `没去` use different words but are both
   negative, so they do not conflict.
 - **Applies to T3 / T4 only.** T0–T2 are literal matches, so polarity is consistent by
-  construction (if the page really is negative, the excerpt carries the same negation).
+  construction (if the document really is negative, the excerpt carries the same negation).
 
 The test is that **the negation must be a standalone word**, guaranteed by
 `Intl.Segmenter` tokenization:
@@ -387,7 +416,8 @@ import * as jieba from '@isdk/nlp-jieba';
 import { createJiebaParticleTagger } from '@isdk/zh-particles';
 
 const tagger = createJiebaParticleTagger(jieba);
-locateExcerpt(ex, page, { markdown: md, ignoreParticles: tagger });
+locateExcerpt(ex, text, { markdown: md, ignoreParticles: tagger });
+// High-level entry is simpler: matchExcerpt(ex, text, { ignoreParticles: true }) assembles jieba for you
 ```
 
 Measured: **6/6 particle confusions matched, 11/11 content-word misuses rejected**.
@@ -432,7 +462,7 @@ output format (it relies on top-level await).
 ### Performance
 
 `addDefaultDict()` costs about 49 ms (once); tokenization is roughly 1.5 µs per
-character (6,000 chars ≈ 9 ms). With `createPageIndex` caching you pay it once when
+character (6,000 chars ≈ 9 ms). With `createTextIndex` caching you pay it once when
 building the index. Very long text (default > 200,000 chars) skips the check and falls
 back to no folding.
 
@@ -496,14 +526,16 @@ decimals, and chained carries.
 ```ts
 import * as cjk from 'cjk-number';
 import { createCjkNumberParser } from '@isdk/normalize-text';
-locateExcerpt(ex, page, {
+locateExcerpt(ex, text, {
   cjkNumerals: true,
   cjkNumeralParser: createCjkNumberParser(cjk),  // inject the backend
 });
 ```
 
-> **`cjk-number` is ESM-only** (no CJS main; `require` fails), so it can only be an
-> **optional peer** injected by the caller — this library's CJS output cannot reference it.
+> **`cjk-number` is ESM-only** (its `exports` map has only an `import` condition;
+> `require` fails). The high-level entry ships it as a mandatory dependency and
+> assembles it automatically (the loader falls back to the ESM entry, Node ≥ 20.19);
+> the low-level entry still takes an explicit injection as shown above.
 
 **Honest note**: switching libraries fixes **pure numeral parsing**, but the ambiguity
 "is this Han character a numeral *here*" remains. Calling
@@ -649,7 +681,7 @@ Both default to `false`.
 ```
 
 Known limitation: `McDonald` → `Mc Donald` and `iPhone` → `i Phone` are over-split.
-But since page and excerpt go through the same transform, **the same word still
+But since document and excerpt go through the same transform, **the same word still
 matches**; a false positive requires two *different* sources collapsing to one string.
 
 ## Three ways to write `ignorePunctuation`
@@ -658,10 +690,10 @@ matches**; a false positive requires two *different* sources collapsing to one s
 boolean makes them fight each other. Besides `boolean`, two more forms are accepted:
 
 ```ts
-locateExcerpt(ex, page, { ignorePunctuation: true });               // fold to placeholder, drop decided by script
-locateExcerpt(ex, page, { ignorePunctuation: 'drop' });             // drop every placeholder: bare skeleton
-locateExcerpt(ex, page, { ignorePunctuation: { symbols: true } });  // backticks, + = ~ count too
-locateExcerpt(ex, page, { ignorePunctuation: { keep: [/\s+/] } });  // fold punctuation only, keep word breaks
+locateExcerpt(ex, text, { ignorePunctuation: true });               // fold to placeholder, drop decided by script
+locateExcerpt(ex, text, { ignorePunctuation: 'drop' });             // drop every placeholder: bare skeleton
+locateExcerpt(ex, text, { ignorePunctuation: { symbols: true } });  // backticks, + = ~ count too
+locateExcerpt(ex, text, { ignorePunctuation: { keep: [/\s+/] } });  // fold punctuation only, keep word breaks
 ```
 
 | Sub-decision | Option | Default |
@@ -696,7 +728,7 @@ callers usually **only dare to cite strict hits** and want the rest reviewed by 
 human — so the two need to be distinguishable.
 
 ```ts
-const r = locateExcerpt(ex, page, { markdown: md, ignorePunctuation: true });
+const r = locateExcerpt(ex, text, { markdown: md, ignorePunctuation: true });
 if (r.kind === 'exact' || (r.kind === 'normalized' && !r.punctFolded)) {
   cite(r);               // cite directly only on a strict hit
 } else if (isHit(r)) {
@@ -708,7 +740,7 @@ The meaning is "**crossed a difference**", not "folded punctuation" — the latt
 would flag every hit to `true` once the option is on, leaving callers nothing to
 distinguish:
 
-| Page | Excerpt | `punctFolded` |
+| Document | Excerpt | `punctFolded` |
 |---|---|---|
 | `本院认为，被告…。` | `本院认为，被告…。` | `false` — punctuation identical, `exact` matches already |
 | `本院认为，被告…。` | `本院认为。被告…，` | `true` — comma and full stop swapped |
@@ -719,7 +751,7 @@ are handled by `ignoreWidth`, i.e. ordinary T1 normalization, and need no review
 (`本院认为,被告…` ↔ `本院认为，被告…` is `false`).
 
 It is decided by re-normalizing both sides with `ignorePunctuation: false` and
-comparing — the page side is "the matched span **plus the punctuation/whitespace
+comparing — the document side is "the matched span **plus the punctuation/whitespace
 immediately adjacent to each edge**", while the excerpt side is kept as-is. A
 difference means the match only worked because punctuation was ignored. In
 markdown mode the comparison uses the **flattened** text, so syntax markers like
@@ -727,11 +759,11 @@ markdown mode the comparison uses the **flattened** text, so syntax markers like
 
 The two sides are **deliberately asymmetric**:
 
-- **The page side gets its edge punctuation back.** Normalization drops leading /
+- **The document side gets its edge punctuation back.** Normalization drops leading /
   trailing punctuation as optional separators, so the matched span often lacks its
   final full stop. Without adding it back, "both sides actually have the period"
   would be reported as a difference, while a **real** difference sitting on the
-  edge (page has a colon, the excerpt a full stop) would be missed — adding it
+  edge (the document has a colon, the excerpt a full stop) would be missed — adding it
   back fixes both: what's there is there, and what it is, is what it is.
 - **The excerpt side stays as-is.** Whether its punctuation exists, and what it
   is, is exactly what's being compared — nothing may be added for it.
@@ -755,7 +787,7 @@ ellipsis for "has not come" (`他未来`).
 
 ### First: polysemy itself is not a risk here
 
-Page and excerpt go through **the same transform**, so `未来` stays `未来` on both
+Document and excerpt go through **the same transform**, so `未来` stays `未来` on both
 sides. The contract is **location**, not **interpretation**: the same string should
 point at the same place.
 
@@ -789,7 +821,7 @@ outside this library's scope. The approach is **conservative default plus an
 override hook**, not pretending it can be decided automatically:
 
 ```ts
-locateExcerpt(ex, page, {
+locateExcerpt(ex, text, {
   negationLexicon: {
     negations: ['未来'],        // transcripts: treat 「未来」 as negation too
     nonNegations: ['无限制'],   // product names / terms: never a negation
@@ -904,7 +936,8 @@ detectProfile('本院认为被告构成根本违约').id; // 'cjk'
 ```ts
 import * as dmpEs from 'diff-match-patch-es';
 const fuzzy = createDmpEsFallback(dmpEs);
-locateExcerpt(ex, page, { markdown: md, fallbacks: [fuzzy] });
+locateExcerpt(ex, text, { markdown: md, fallbacks: [fuzzy] });
+// The high-level entry (matchExcerpt) already injects this matcher by default
 ```
 
 Existing code can keep using `createDmpFallback(new diff_match_patch())`, but that
@@ -913,7 +946,7 @@ package has not been published since 2020-05 and is marked `@deprecated`.
 #### Why not jsdiff / @lowlighter/diff
 
 The deciding factor is not "who is active" but **who has Bitap**. What we need is not
-"diff two strings" but "fuzzy-locate an excerpt inside a 600 KB page" — that is dmp's
+"diff two strings" but "fuzzy-locate an excerpt inside a 600 KB document" — that is dmp's
 `match_main`, and jsdiff has no equivalent (it only offers full comparisons such as
 `diffChars`). Using jsdiff would mean writing the entire seed-and-extend location step
 ourselves.
@@ -970,52 +1003,86 @@ const myFallback: FallbackMatcher = {
 The contract only goes as far as `[start, end)` in normalized space; the locator handles
 mapping back to source — so swapping in any library never touches coordinate logic.
 
-## Batch verification: `verifyExcerptFromPage` — returns the source on hit
+## High-level entry: `matchExcerpt` — the conclusion in one call
 
-When checking "does this excerpt come from this page", **the hit matters more than the
-coordinates**: what you cite is the **source snippet** itself. So this entry point returns a
-result object rather than a boolean:
+Use this when you want **one call covering T0–T4, returning conclusion + citable source
++ full metadata**:
 
 ```ts
-import { verifyExcerptFromPage, createExcerptVerifier } from '@isdk/excerpt-match';
+import { matchExcerpt, createExcerptMatcher } from '@isdk/excerpt-match';
 
-const r = await verifyExcerptFromPage(excerpt, mdSource, {
-  markdown: md,
-  retriever,                       // optional: needed for T4
-  aligner: createDmpFallback(dmp), // optional: align inside the segment
-});
+// zero configuration: markdown flattening (mdast+GFM) and the T3 fuzzy tier
+// (diff-match-patch-es) are built in
+const r = await matchExcerpt(excerpt, mdSource);
 if (r.found) cite(r.source);       // r.source is the markdown source snippet
 
-// one page, many excerpts: build the index once
-const v = createExcerptVerifier(mdSource, { markdown: md, retriever });
-for (const it of items) it.ok = (await v.check(it.excerpt)).found;
+// configure a retriever only when you need semantic recall (T4) —
+// this package ships no retriever implementation
+const r2 = await matchExcerpt(excerpt, mdSource, {
+  retriever,
+  onHit: (ex, r) => track('hit', r),   // optional: called on hit
+  onMiss: (ex, r) => track('miss', ex), // optional; silent when unset
+});
+
+// one document, many excerpts: build the index once
+const m = await createExcerptMatcher(mdSource, { retriever });
+for (const it of items) it.ok = (await m.match(it.excerpt)).found;
 ```
 
 | Field | Meaning |
 |---|---|
-| `found` | whether it hit (the boolean the old function returned) |
-| `source` | **the matched markdown snippet** = `pageContent.slice(index, index + length)`, markers included |
+| `found` | whether it hit — "does it come from this text" |
+| `source` | **the matched markdown snippet** = `text.slice(index, index + length)`, markers included |
 | `text` | visible text without markers, for display |
 | `index` / `length` / `line` | source coordinates and line number, ready for highlighting |
+| `kind` / `score` / `occurrences` / `punctFolded` / `crossesBlocks` | full metadata inherited from `ExcerptMatch` — ambiguity and strictness without a second lookup |
 
-- **Async**: a retriever may return a Promise, so anything using T4 is async (T0–T3 are sync).
+- **Built-in defaults; explicit options always win**:
+
+  | Option | When omitted | How to tighten |
+  |---|---|---|
+  | `markdown` | built-in mdast + GFM flattener | pass your own; `markdown: null` forces plain text |
+  | `fallbacks` | built-in `diff-match-patch-es` fuzzy matcher | `preset: 'strict'` or explicit `fallbacks: []` |
+  | `aligner` | same source as `fallbacks` (in-segment alignment for T4) | pass a custom aligner |
+  | `cjkNumeralParser` | auto-assembled `cjk-number` when `cjkNumerals` is on | pass `createCjkNumberParser(cjk)` |
+  | `ignoreParticles: true` | auto-upgraded to the built-in jieba tagger | pass your own `ParticleTagger` |
+
+  `retriever` is the one option without a default — semantic recall needs external
+  services (embedding / BM25); without it the semantic layer is never touched.
+- **T3 / T4 stack**: `fallbacks` (T3 and any custom matchers) run in order during the sync
+  phase; the semantic retriever runs only on a miss and only when `retriever` is given.
+- **Async**: always `await`, decoupled from whether T4 is configured — the call site
+  never changes with the tier. (Built-in defaults load lazily on demand, which is why
+  `createExcerptMatcher` is async.)
 - `minScore` (defaults to `minFallbackScore`, i.e. 0.75) constrains only T3/T4 — T0–T2 are always 1.
   Raise it explicitly (e.g. `0.9`) for citation checking / forensics; keep the default for dedup / recall.
-- A miss logs `console.warn` by default; override with `onMiss`.
-- Want raw metadata instead? Use `locateExcerptFromPage`, which returns the full `ExcerptMatch`.
+- A miss is **silent by default**; add `onMiss` when you want telemetry.
 
 Migrating from a hand-rolled `toLowerCase + includes` also buys: markdown flattening,
 cross-block copies, punctuation differences, the many ellipsis spellings (**matched as an
-ordered chain**, so fragments scattered across the page no longer pass), and T4 catching
+ordered chain**, so fragments scattered across the document no longer pass), and T4 catching
 title-word injection and cross-section summaries.
+
+## Which entry point
+
+| API | Sync | Tiers | Returns | For |
+|---|---|---|---|---|
+| `matchExcerpt` | async | **T0–T4** | conclusion + source snippet + full metadata | one call: verify, cite, batch checks |
+| `createExcerptMatcher` / `.match()` | async | **T0–T4** | same | one configuration reused for many excerpts (index built once) |
+| `locateExcerpt` | sync | T0–T3 | `ExcerptMatch` coordinates | just coordinates; orchestrate callbacks yourself |
+| `createTextIndex` / `index.locate` | sync | T0–T3 | same | many excerpts per text, reused index |
+| `locateSemantic` | async | T4 | `ExcerptMatch` | coordinate adapter for custom retrieval flows |
+
+In one line: **conclusion → `matchExcerpt`; coordinates → `locateExcerpt`**;
+`locateSemantic` is an implementation layer regular callers need not touch.
 
 ## Performance
 
-Page normalization (including markdown flattening) is O(n) and heavy. Calling
-`locateExcerpt` per excerpt repeats the full-page work every time.
+Normalization of the whole document (including markdown flattening) is O(n) and heavy. Calling
+`locateExcerpt` per excerpt repeats the full-document work every time.
 
 ```ts
-const idx = createPageIndex(page, { markdown: md }); // normalize once
+const idx = createTextIndex(text, { markdown: md }); // normalize once
 for (const it of items) idx.locate(it.excerpt);      // then just match
 ```
 
@@ -1023,7 +1090,7 @@ Measured:
 
 | Scenario | One-shot | Reusing index |
 |---|---|---|
-| 600 KB plain-text page | ~200 ms | ~7 ms |
+| 600 KB plain text | ~200 ms | ~7 ms |
 | 12 KB markdown | ~60 ms | ~4 ms |
 
 ## Module layout
@@ -1033,8 +1100,10 @@ src/types.ts      shared return contract + pluggable interfaces
 src/normalize.ts  normalization + source index mapping (the only "magic"; no library does this)
 src/profiles.ts   language policy: whitespace handling, tokenization granularity
 src/markdown.ts   md source → visible text + exact source mapping
-src/locator.ts    T0/T1/T2 deterministic tiers + fallback orchestration + coordinate mapping
-src/adapters.ts   T3 diff-match-patch, T4 semantic recall
+src/locator.ts        T0/T1/T2 deterministic tiers + fallback orchestration + coordinate mapping
+src/fuzzyMatch.ts     T3 adapter: diff-match-patch in this package's coordinate system
+src/semanticMatch.ts  T4 adapter: semantic recall in this package's coordinate system
+src/excerptMatcher.ts high-level entry: T0–T4 orchestration, conclusion + source + metadata
 ```
 
 Only three things are written here; everything else delegates to existing libraries:

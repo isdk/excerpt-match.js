@@ -71,9 +71,9 @@ describe('近似子串定位', () => {
 
   it('★ 返回的是连续区间，且包含中间未匹配的字符', () => {
     // 页面有标点，摘录没有 —— 这些标点必须落在区间内，否则高亮会缺字
-    const page = '本院认为，被告的行为已经构成根本违约，应当赔偿。';
-    const r = find.find('本院认为被告的行为构成根本违约', page)!;
-    const span = page.slice(r[0].start, r[0].end);
+    const doc = '本院认为，被告的行为已经构成根本违约，应当赔偿。';
+    const r = find.find('本院认为被告的行为构成根本违约', doc)!;
+    const span = doc.slice(r[0].start, r[0].end);
     expect(span).toContain('本院认为');
     expect(span).toContain('根本违约');
     // 区间必须连续覆盖，而不是分散片段
@@ -107,9 +107,9 @@ describe('近似子串定位', () => {
 
 describe('区间语义 vs 模糊搜索（本包的存在理由）', () => {
   it('start/end 可直接用于 slice，得到完整的一段', () => {
-    const page = '本院认为，被告的行为已经构成根本违约，应当承担赔偿责任。';
-    const r = find.find('本院认为被告的行为构成根本违约', page)!;
-    const span = page.slice(r[0].start, r[0].end);
+    const doc = '本院认为，被告的行为已经构成根本违约，应当承担赔偿责任。';
+    const r = find.find('本院认为被告的行为构成根本违约', doc)!;
+    const span = doc.slice(r[0].start, r[0].end);
     // slice 出来的应当是一段连续文本，且首尾都是摘录里出现的内容
     expect(span.length).toBeGreaterThan(0);
     expect(span.startsWith('本院认为')).toBe(true);

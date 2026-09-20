@@ -265,7 +265,7 @@ The root package has 25 options; most are scene-dependent:
 **Explicit options always override the preset:**
 
 ```ts
-locateExcerpt(ex, page, { preset: 'loose', ignorePunctuation: false });
+locateExcerpt(ex, text, { preset: 'loose', ignorePunctuation: false });
 ```
 
 ### One gotcha
@@ -301,5 +301,8 @@ let `docIdOf` return `undefined` to fall back to full text.
 |---|---|---|
 | `createPageIndex` | **`createTextIndex`** | it indexes text, not a "page" |
 | `PageIndex` | `TextIndex` | same |
+| `verifyExcerptFromPage` | **`matchExcerpt`** | the input is document text, no pagination; upgraded to full T0–T4 with complete metadata |
+| `locateExcerptFromPage` | (merged into `matchExcerpt`) | the unified result already carries all metadata; no second variant needed |
+| `createExcerptVerifier` | **`createExcerptMatcher`** | named after `matchExcerpt`; `.check()` folded into `.match()` |
 
-Old names remain as `@deprecated` aliases.
+`createPageIndex` / `PageIndex` were kept as `@deprecated` aliases early on and have now been removed.

@@ -8,23 +8,23 @@ import { locateExcerpt, isHit } from './index';
  * 于是 T2 找不到切分点，「开了忽略标点」反而丢掉了分段锚点能力。
  */
 describe('忽略标点时，摘录里的省略表达默认受保护', () => {
-  const page = '本院认为，被告构成根本违约。\n\n综上，被告应承担全部责任。';
+  const doc = '本院认为，被告构成根本违约。\n\n综上，被告应承担全部责任。';
 
   it('★ 开了 ignorePunctuation，摘录带「……」仍能走分段锚点', () => {
-    const r = locateExcerpt('本院认为……被告应承担全部责任。', page, { ignorePunctuation: true });
+    const r = locateExcerpt('本院认为……被告应承担全部责任。', doc, { ignorePunctuation: true });
     expect(isHit(r)).toBe(true);
     expect(r.kind).toBe('segmented');
   });
 
   it('对照：显式允许折叠省略表达 → 退化到普通 T1（不再是分段锚点）', () => {
-    const r = locateExcerpt('本院认为……被告应承担全部责任。', page, {
+    const r = locateExcerpt('本院认为……被告应承担全部责任。', doc, {
       ignorePunctuation: { preserveEllipsis: false },
     });
     expect(r.kind).not.toBe('segmented');
   });
 
   it('自定义省略表达同样受保护 —— keep 与 ellipsis 共用一套模式', () => {
-    const r = locateExcerpt('本院认为〔略〕被告应承担全部责任。', page, {
+    const r = locateExcerpt('本院认为〔略〕被告应承担全部责任。', doc, {
       ellipsis: ['〔略〕'],
       ignorePunctuation: true,
     });
@@ -35,9 +35,9 @@ describe('忽略标点时，摘录里的省略表达默认受保护', () => {
 
 describe("drop 档：折叠后不留占位符 —— 查重场景的「文字骨架」", () => {
   it('fold 下够不到（拉丁词边界占位符还在），drop 下命中', () => {
-    const page = 'ab, cd';
-    expect(isHit(locateExcerpt('abcd', page, { ignorePunctuation: true }))).toBe(false);
-    expect(isHit(locateExcerpt('abcd', page, { ignorePunctuation: 'drop' }))).toBe(true);
+    const doc = 'ab, cd';
+    expect(isHit(locateExcerpt('abcd', doc, { ignorePunctuation: true }))).toBe(false);
+    expect(isHit(locateExcerpt('abcd', doc, { ignorePunctuation: 'drop' }))).toBe(true);
   });
 
   it('drop 不会让「有没有标点」变得不可判定 —— punctFolded 仍然可用', () => {
@@ -50,14 +50,14 @@ describe("drop 档：折叠后不留占位符 —— 查重场景的「文字骨
 });
 
 describe('symbols 开关：默认不动符号，开了才折', () => {
-  const page = 'value`key';
+  const doc = 'value`key';
 
   it('默认：反引号是普通字符，缺了它就够不到', () => {
-    expect(isHit(locateExcerpt('value key', page, { ignorePunctuation: true }))).toBe(false);
+    expect(isHit(locateExcerpt('value key', doc, { ignorePunctuation: true }))).toBe(false);
   });
 
   it('symbols: true —— 反引号作标点处理', () => {
-    const r = locateExcerpt('value key', page, { ignorePunctuation: { symbols: true } });
+    const r = locateExcerpt('value key', doc, { ignorePunctuation: { symbols: true } });
     expect(isHit(r)).toBe(true);
   });
 });

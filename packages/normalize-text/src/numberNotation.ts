@@ -192,7 +192,7 @@ export interface CjkNumeralParserOptions {
  * @example
  * ```ts
  * import * as cjk from 'cjk-number';
- * locateExcerpt(ex, page, {
+ * locateExcerpt(ex, text, {
  *   cjkNumerals: true,
  *   cjkNumeralParser: createCjkNumberParser(cjk),
  * });

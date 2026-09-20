@@ -31,7 +31,7 @@ describe('normToRaw：joined 视图的归一化 → raw 两跳映射', () => {
      * 嵌套子块的开头。扩展必须被夹在前两个块的范围内 → true。
      */
     it('★ 引用块内跨段：摘录末尾句号来自嵌套子块开头 → true', () => {
-      const page = [
+      const doc = [
         '> Outer quote first part HERE',
         '>',
         '> Outer quote second part',
@@ -40,11 +40,11 @@ describe('normToRaw：joined 视图的归一化 → raw 两跳映射', () => {
         '',
         '.Tail block after quote',
       ].join('\n');
-      const r = locateExcerpt('Outer quote first part hereOuter quote second part.', page, IGNORE);
+      const r = locateExcerpt('Outer quote first part hereOuter quote second part.', doc, IGNORE);
       expect(r.kind).toBe('normalized');
       expect(r.crossesBlocks).toBe(true);
       // span 不越过嵌套子块 —— 句号在命中区域内无对应，必须送复核
-      expect(page.slice(r.index, r.index + r.length)).not.toContain('Deeply');
+      expect(doc.slice(r.index, r.index + r.length)).not.toContain('Deeply');
       expect(r.punctFolded).toBe(true);
     });
 
@@ -53,7 +53,7 @@ describe('normToRaw：joined 视图的归一化 → raw 两跳映射', () => {
      * 扩展在块内补上句号后两侧相等 → false。夹取不得误伤块内扩展。
      */
     it('引用块内跨段：两侧的句号都真实存在（页面段自收句号）→ false', () => {
-      const page = [
+      const doc = [
         '> Outer quote first part HERE',
         '>',
         '> Outer quote second part.',
@@ -62,7 +62,7 @@ describe('normToRaw：joined 视图的归一化 → raw 两跳映射', () => {
         '',
         '.Tail block after quote',
       ].join('\n');
-      const r = locateExcerpt('Outer quote first part hereOuter quote second part.', page, IGNORE);
+      const r = locateExcerpt('Outer quote first part hereOuter quote second part.', doc, IGNORE);
       expect(r.kind).toBe('normalized');
       expect(r.crossesBlocks).toBe(true);
       expect(r.punctFolded).toBe(false);
@@ -73,11 +73,11 @@ describe('normToRaw：joined 视图的归一化 → raw 两跳映射', () => {
      * 第三个条目以「.」开头 —— 摘录末尾的句号是拼不出来的、来自下一块。
      */
     it('★ 列表（含嵌套列表）：摘录末尾句号来自下一列表项开头 → true', () => {
-      const page = ['- Outer item one HERE', '  - Nested item alpha', '- .Outer item two starts with dot'].join('\n');
-      const r = locateExcerpt('Outer item one hereNested item alpha.', page, IGNORE);
+      const doc = ['- Outer item one HERE', '  - Nested item alpha', '- .Outer item two starts with dot'].join('\n');
+      const r = locateExcerpt('Outer item one hereNested item alpha.', doc, IGNORE);
       expect(r.kind).toBe('normalized');
       expect(r.crossesBlocks).toBe(true);
-      expect(page.slice(r.index, r.index + r.length)).not.toContain('two');
+      expect(doc.slice(r.index, r.index + r.length)).not.toContain('two');
       expect(r.punctFolded).toBe(true);
     });
   });
@@ -89,17 +89,17 @@ describe('normToRaw：joined 视图的归一化 → raw 两跳映射', () => {
      * 摘录末尾的 `&` 在命中区域内没有对应 —— 夹取后必须判 true。
      */
     it('★ 下一块以 &amp; 开头：摘录末尾 & 在命中区域内无对应 → true', () => {
-      const page = [
+      const doc = [
         'First part &amp; more HERE',
         '',
         'Second part &amp; begins',
         '',
         '&amp; third block starts ampersand',
       ].join('\n');
-      const r = locateExcerpt('First part & more hereSecond part & begins&', page, IGNORE);
+      const r = locateExcerpt('First part & more hereSecond part & begins&', doc, IGNORE);
       expect(r.kind).toBe('normalized');
       expect(r.crossesBlocks).toBe(true);
-      expect(page.slice(r.index, r.index + r.length)).not.toContain('third');
+      expect(doc.slice(r.index, r.index + r.length)).not.toContain('third');
       expect(r.punctFolded).toBe(true);
     });
 
@@ -109,12 +109,12 @@ describe('normToRaw：joined 视图的归一化 → raw 两跳映射', () => {
      * 与摘录（`…begins.`）不等 → 误报 true；夹取后只补块内的句号 → false。
      */
     it('块自收句号 + 下一块以 &amp; 开头：只补块内的句号 → false', () => {
-      const page = ['First part &amp; more HERE', '', 'Second part &amp; begins.', '', '&amp; tail block'].join('\n');
-      const r = locateExcerpt('First part & more hereSecond part & begins.', page, IGNORE);
+      const doc = ['First part &amp; more HERE', '', 'Second part &amp; begins.', '', '&amp; tail block'].join('\n');
+      const r = locateExcerpt('First part & more hereSecond part & begins.', doc, IGNORE);
       expect(r.kind).toBe('normalized');
       expect(r.crossesBlocks).toBe(true);
       // 源码 span 保留实体的原始形态（&amp;），坐标没有因实体展开而错位
-      expect(page.slice(r.index, r.index + r.length)).toContain('&amp;');
+      expect(doc.slice(r.index, r.index + r.length)).toContain('&amp;');
       expect(r.punctFolded).toBe(false);
     });
 
@@ -123,11 +123,11 @@ describe('normToRaw：joined 视图的归一化 → raw 两跳映射', () => {
      * 两侧的引号与句号都真实存在 → false。
      */
     it('数字实体（&#39; / &#34;）解码后参与命中与边缘判定 → false', () => {
-      const page = ['It&#39;s fine HERE', '', 'Next &#34;block&#34; ends.', '', '. stray dot'].join('\n');
-      const r = locateExcerpt("It's fine hereNext \"block\" ends.", page, IGNORE);
+      const doc = ['It&#39;s fine HERE', '', 'Next &#34;block&#34; ends.', '', '. stray dot'].join('\n');
+      const r = locateExcerpt("It's fine hereNext \"block\" ends.", doc, IGNORE);
       expect(r.kind).toBe('normalized');
       expect(r.crossesBlocks).toBe(true);
-      expect(page.slice(r.index, r.index + r.length)).toContain('&#39;');
+      expect(doc.slice(r.index, r.index + r.length)).toContain('&#39;');
       expect(r.punctFolded).toBe(false);
     });
   });

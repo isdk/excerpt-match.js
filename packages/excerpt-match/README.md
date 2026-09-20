@@ -2,7 +2,7 @@
 
 [English](./README.en.md) | 中文
 
-判断一段摘录是否出自页面正文，并定位到**原文（markdown 源码）中的精确位置与长度**。
+判断一段摘录是否出自文档正文，并定位到**原文（markdown 源码）中的精确位置与长度**。
 
 分层匹配、语言无关、核心零依赖。
 
@@ -10,11 +10,11 @@
 
 ## 它解决什么问题
 
-`pageContent` 是 markdown **源码**，而摘录是用户从**渲染后页面**复制的。中间隔着一层渲染：
+`text` 是 markdown **源码**，而摘录是用户从**渲染后文档**复制的。中间隔着一层渲染：
 
 ```
 md 源码 : 本院**认为**被告构成[根本违约](http://x.com)。
-页面显示: 本院认为被告构成根本违约。
+渲染结果: 本院认为被告构成根本违约。
 复制得到: 本院认为被告构成根本违约。
 ```
 
@@ -22,14 +22,17 @@ md 源码 : 本院**认为**被告构成[根本违约](http://x.com)。
 本库先把 md 摊平成「渲染后可见文本」，同时**保留每个字符到源码的精确映射**，
 因此既能在可见文本上比对，又能回切出源码坐标。
 
+> **术语约定**：本库处理的是**一篇文档**（markdown 源码或纯文本），没有页 / 分页的概念；
+> 下文的「渲染后文档」就是源码渲染出来的内容，摘录从那里复制而来。
+
 ## 三档预设
 
 25 个配置项里多数是按场景决定的，不必每次调用都重新权衡。`preset` 一次选好，
 **显式传入的其它项会覆盖预设**：
 
 ```ts
-locateExcerpt(ex, page, { preset: 'strict' });
-locateExcerpt(ex, page, { preset: 'loose', ignorePunctuation: false });
+locateExcerpt(ex, text, { preset: 'strict' });
+locateExcerpt(ex, text, { preset: 'loose', ignorePunctuation: false });
 ```
 
 | 档位 | 适用 | 核心取舍 |
@@ -44,33 +47,54 @@ locateExcerpt(ex, page, { preset: 'loose', ignorePunctuation: false });
 ## 快速开始
 
 ```bash
-npm install
+npm install @isdk/excerpt-match
 ```
 
+高层入口**零配置可用** —— md 摊平（mdast + GFM）、T3 模糊层（diff-match-patch-es）
+等依赖已随包必装并自动装配：
+
 ```ts
-import { locateExcerpt } from './src';
+import { matchExcerpt } from '@isdk/excerpt-match';
+
+const r = await matchExcerpt('本院认为，被告的行为构成违约', mdSource);
+
+if (r.found) {
+  // 坐标契约恒成立；source 就是可引用的 md 源码片段
+  console.log(r.kind, r.score, mdSource.slice(r.index, r.index + r.length));
+}
+```
+
+一篇文档查**多条**摘录时，务必复用索引（见 [性能](#性能)）：
+
+```ts
+import { createExcerptMatcher } from '@isdk/excerpt-match';
+
+const m = await createExcerptMatcher(mdSource);
+for (const it of items) it.ok = (await m.match(it.excerpt)).found;
+```
+
+只要坐标不要结论的同步入口是 `locateExcerpt` —— 它保持**核心零依赖、显式注入**：
+
+```ts
+import { locateExcerpt } from '@isdk/excerpt-match';
 import { createMdastFlattener } from '@isdk/md-flatten';
 import { fromMarkdown } from 'mdast-util-from-markdown';
 import { gfm } from 'micromark-extension-gfm';
 import { gfmFromMarkdown } from 'mdast-util-gfm';
 
-// 1) 建摊平器（md 场景必传）
+// 摊平器显式传入（低层 API 不自动装配）
 const md = createMdastFlattener(fromMarkdown, {
   extensions: [gfm()],
   mdastExtensions: [gfmFromMarkdown()],
 });
 
-// 2) 定位
 const r = locateExcerpt('本院认为，被告的行为构成违约', mdSource, { markdown: md });
 
 if (r.kind !== 'none') {
-  // 坐标契约恒成立
   const span = mdSource.slice(r.index, r.index + r.length);
   console.log(r.kind, r.score, span);
 }
 ```
-
-一个页面查**多条**摘录时，务必复用索引（见 [性能](#性能)）。
 
 ## 返回契约
 
@@ -78,7 +102,7 @@ if (r.kind !== 'none') {
 
 ```ts
 interface ExcerptMatch {
-  index: number;          // 在 pageContent 中的起始下标
+  index: number;          // 在 text 中的起始下标
   length: number;         // 长度；slice(index, index+length) 即命中片段
   kind: MatchKind;        // 命中层级
   score: number;          // 0~1，1 = 完全一致
@@ -101,11 +125,13 @@ interface ExcerptMatch {
 | T0 | `exact` | 无差异 | 在可见文本上 `indexOf` |
 | T1 | `normalized` | 空白 / 全半角 / 标点 / 大小写 / 零宽字符 | 内置归一化 |
 | T2 | `segmented` | 摘录自带省略号（`……`） | 内置锚点链 |
-| T3 | `fuzzy` | 错字、多字漏字 | 外部匹配器（diff-match-patch） |
+| T3 | `fuzzy` | 错字、多字漏字 | 默认内置（diff-match-patch-es）；可注入自定义 |
 | T4 | `semantic` | 同义改写、句式变换 | 外部召回（embedding / BM25） |
 | — | `none` | — | 未命中 |
 
-**T3 / T4 默认关闭**：不传 `fallbacks` 就绝不会有任何模糊匹配。
+**T3 / T4 的开关**：高层入口（`matchExcerpt`）默认注入内置 T3 模糊层，
+`preset: 'strict'` 或显式 `fallbacks: []` 可关闭；低层入口（`locateExcerpt`）
+不传 `fallbacks` 就绝不会有任何模糊匹配。T4 只在给了 `retriever` 时才可能发生。
 严格场景（引用校验、取证）拿到的就是纯确定性结果。
 
 ### 按场景选配置
@@ -118,7 +144,7 @@ interface ExcerptMatch {
 
 ## 坐标契约
 
-`index` / `length` 是 **pageContent 中的精确位置与长度**。
+`index` / `length` 是 **text 中的精确位置与长度**。
 
 - md 模式下 `length` 是**源码长度**（含语法标记），大于渲染后字数：
   摘录「被告的行为已经构成根本违约」渲染 13 字 → 源码
@@ -132,7 +158,7 @@ interface ExcerptMatch {
 
 摘录若起止于行内构造**中间**（如只取到 `[根本违约](url)` 的「根本」），
 「精确」和「独立可渲染」不可兼得 —— 补上 `](url)` 会多出「违约」，不补就是半截链接。
-本库选**精确**；需要合法片段时可按 `PageIndex.blocks` 自行外扩。
+本库选**精确**；需要合法片段时可按 `TextIndex.blocks` 自行外扩。
 
 ## Markdown 摊平
 
@@ -202,8 +228,7 @@ md   : 第一段末尾内容。\n\n第二段开头内容。
 ```
 
 更一般的场景：摘录横跨标题、段落、代码块、列表项 —— 任何「渲染后看起来
-连续、源码里却隔着块边界」的内容（块的概念见上节）。复制从渲染后页面出发，
-感知不到块的存在。
+连续、源码里却隔着块边界」的内容（块的概念见上节）。复制从渲染后文档出发，感知不到块的存在。
 
 块间分隔符是我们插入的排版产物，不是内容。所以除严格视图外，
 再派生一份**无分隔符视图**，两个视图一起参与匹配。
@@ -242,13 +267,13 @@ md   : 第一段末尾内容。\n\n第二段开头内容。
 import { DEFAULT_ELLIPSIS } from './src';
 
 // 覆盖默认
-locateExcerpt(ex, page, { ellipsis: ['〔中略〕', /\[\s*snip\s*\]/] });
+locateExcerpt(ex, text, { ellipsis: ['〔中略〕', /\[\s*snip\s*\]/] });
 
 // 保留默认 + 追加
-locateExcerpt(ex, page, { ellipsis: [...DEFAULT_ELLIPSIS, '〔中略〕'] });
+locateExcerpt(ex, text, { ellipsis: [...DEFAULT_ELLIPSIS, '〔中略〕'] });
 
 // 关闭 T2
-locateExcerpt(ex, page, { ellipsis: [] });
+locateExcerpt(ex, text, { ellipsis: [] });
 ```
 
 字符串按**字面量**匹配（内部转义，传 `'...'` 不会被当成正则）；
@@ -291,7 +316,7 @@ checkPolarity: true（默认）
 
 三个设计细节：
 
-- **只比较命中 span 内的原文**，不用全文。页面别处有「不」很正常，
+- **只比较命中 span 内的原文**，不用全文。文档别处有「不」很正常，
   但落在 span 外就不该影响判断。
 - **只比较奇偶，不比较具体用词**。「不去」与「没去」用词不同但同为否定，不算冲突。
 - **只在 T3 / T4 生效**。T0–T2 是字面匹配，极性天然一致
@@ -355,7 +380,8 @@ import * as jieba from '@isdk/nlp-jieba';
 import { createJiebaParticleTagger } from '@isdk/zh-particles';
 
 const tagger = createJiebaParticleTagger(jieba);
-locateExcerpt(ex, page, { markdown: md, ignoreParticles: tagger });
+locateExcerpt(ex, text, { markdown: md, ignoreParticles: tagger });
+// 高层入口更简单：matchExcerpt(ex, text, { ignoreParticles: true }) 自动装配 jieba
 ```
 
 实测 **6/6 助词混用命中、11/11 实词误用拒绝**。
@@ -400,7 +426,7 @@ external: ['@isdk/nlp-jieba']
 ### 性能
 
 `addDefaultDict()` 约 49ms（一次性），分词约 1.5μs/字符
-（6000 字 ≈ 9ms）。配合 `createPageIndex` 缓存，只在建索引时付一次代价。
+（6000 字 ≈ 9ms）。配合 `createTextIndex` 缓存，只在建索引时付一次代价。
 超长文本（默认 > 200_000 字符）会跳过判定，退回不折叠。
 
 ## 归一化是分阶段流水线，**顺序是设计的一部分**
@@ -458,14 +484,15 @@ external: ['@isdk/nlp-jieba']
 ```ts
 import * as cjk from 'cjk-number';
 import { createCjkNumberParser } from '@isdk/normalize-text';
-locateExcerpt(ex, page, {
+locateExcerpt(ex, text, {
   cjkNumerals: true,
   cjkNumeralParser: createCjkNumberParser(cjk),  // 注入后端
 });
 ```
 
-> **`cjk-number` 是 ESM-only**（没有 CJS main，`require` 会失败），
-> 所以只能作为**可选 peer** 由调用方注入，本库的 CJS 产物无法引用它。
+> **`cjk-number` 是 ESM-only**（exports 只有 `import` 条件，`require` 会失败）。
+> 高层入口已随包必装并自动装配（加载器带 ESM 入口回退，Node ≥ 20.19）；
+> 低层入口仍按上面显式注入。
 
 **诚实说明**：换库解决的是**纯数词解析的正确性**，但**「某个汉字在此处是否为数词」
 的歧义依然存在**。整串调 `number.parse('三思而行')` 确实会抛错，看似提供了
@@ -601,7 +628,7 @@ flat.map[10]; // 第 10 个字符在 md 源码中的下标
 ```
 
 已知限制：`McDonald` → `Mc Donald`、`iPhone` → `i Phone` 会误拆。
-但由于页面与摘录走同一套转换，**同一个词仍然匹配**；
+但由于文档与摘录走同一套转换，**同一个词仍然匹配**；
 只有两个不同的原文收敛成同一串时才会误判。
 
 ## `ignorePunctuation` 的三种写法
@@ -609,10 +636,10 @@ flat.map[10]; // 第 10 个字符在 md 源码中的下标
 「忽略标点」其实是三个不同的问题，压成一个布尔位会互相打架，所以除了 `boolean` 还支持：
 
 ```ts
-locateExcerpt(ex, page, { ignorePunctuation: true });                  // 折成占位符，删不删看两侧文字
-locateExcerpt(ex, page, { ignorePunctuation: 'drop' });                // 占位符一律删：只留文字骨架
-locateExcerpt(ex, page, { ignorePunctuation: { symbols: true } });     // 反引号、+ = ~ 也算标点
-locateExcerpt(ex, page, { ignorePunctuation: { keep: [/\s+/] } });     // 只折标点，保留词边界
+locateExcerpt(ex, text, { ignorePunctuation: true });                  // 折成占位符，删不删看两侧文字
+locateExcerpt(ex, text, { ignorePunctuation: 'drop' });                // 占位符一律删：只留文字骨架
+locateExcerpt(ex, text, { ignorePunctuation: { symbols: true } });     // 反引号、+ = ~ 也算标点
+locateExcerpt(ex, text, { ignorePunctuation: { keep: [/\s+/] } });     // 只折标点，保留词边界
 ```
 
 | 子决策 | 选项 | 默认 |
@@ -644,7 +671,7 @@ locateExcerpt(ex, page, { ignorePunctuation: { keep: [/\s+/] } });     // 只折
 **只敢对严格命中直接引用**，其余要送人工复核 —— 所以需要区分这两类。
 
 ```ts
-const r = locateExcerpt(ex, page, { markdown: md, ignorePunctuation: true });
+const r = locateExcerpt(ex, text, { markdown: md, ignorePunctuation: true });
 if (r.kind === 'exact' || (r.kind === 'normalized' && !r.punctFolded)) {
   cite(r);               // 只有严格命中才直接引用
 } else if (isHit(r)) {
@@ -655,7 +682,7 @@ if (r.kind === 'exact' || (r.kind === 'normalized' && !r.punctFolded)) {
 语义是「**跨越了差异**」，不是「折叠了标点」—— 后者在开启选项后会
 把所有命中都标 `true`，调用方就无从区分了：
 
-| 页面 | 摘录 | `punctFolded` |
+| 文档 | 摘录 | `punctFolded` |
 |---|---|---|
 | `本院认为，被告…。` | `本院认为，被告…。` | `false` —— 标点一致，`exact` 就能命中 |
 | `本院认为，被告…。` | `本院认为。被告…，` | `true` —— 逗号与句号互换 |
@@ -665,14 +692,14 @@ if (r.kind === 'exact' || (r.kind === 'normalized' && !r.punctFolded)) {
 不需要人工复核（`本院认为,被告…` ↔ `本院认为，被告…` 为 `false`）。
 
 判定方式是：两侧各自按 `ignorePunctuation: false` 重新归一化再比较 ——
-页面侧是「命中片段 **+ 紧邻的边缘标点**」，摘录侧保持原样；
+文档侧是「命中片段 **+ 紧邻的边缘标点**」，摘录侧保持原样；
 不同即说明是忽略标点才匹配上的。
 md 模式下比较的是**摊平后**的文本，所以 `**`、`[](url)` 这类语法标记不会被算进差异。
 
 两侧是**不对称**的：
 
-- **页面侧要补边缘标点**。归一化把首尾标点当可选分隔符丢弃，命中区间常常不含
-  末尾句号；不补的话，「两边其实都有句号」会被误报成差异，而「页面是冒号、
+- **文档侧要补边缘标点**。归一化把首尾标点当可选分隔符丢弃，命中区间常常不含
+  末尾句号；不补的话，「两边其实都有句号」会被误报成差异，而「文档是冒号、
   摘录是句号」这种**真实差异**又因为恰好落在边上而被漏报 —— 补上之后，
   有就有、是什么就是什么。
 - **摘录侧保持原样**。它的标点有没有、是什么，本身就是要比对的内容，不能替它补。
@@ -693,7 +720,7 @@ md 模式下比较的是**摊平后**的文本，所以 `**`、`[](url)` 这类�
 
 ### 先厘清：多义词本身不是本库的风险
 
-页面与摘录走**同一套转换**，`未来` 归一后还是 `未来`，两边一致。
+文档与摘录走**同一套转换**，`未来` 归一后还是 `未来`，两边一致。
 本库的契约是**定位**而非**判义**：给定相同的字符串，就该指向相同的位置。
 
 真正的风险是**「异文收敛」** —— 两个**不同**的原文被归一化成同一串：
@@ -724,7 +751,7 @@ md 模式下比较的是**摊平后**的文本，所以 `**`、`[](url)` 这类�
 本库的做法是**保守默认 + 留出覆盖口子**，而不是假装能自动判断：
 
 ```ts
-locateExcerpt(ex, page, {
+locateExcerpt(ex, text, {
   negationLexicon: {
     negations: ['未来'],        // 口语稿：把「未来」也当否定
     nonNegations: ['无限制'],   // 产品名/术语：永远不算否定
@@ -829,7 +856,8 @@ detectProfile('本院认为被告构成根本违约').id; // 'cjk'
 ```ts
 import * as dmpEs from 'diff-match-patch-es';
 const fuzzy = createDmpEsFallback(dmpEs);
-locateExcerpt(ex, page, { markdown: md, fallbacks: [fuzzy] });
+locateExcerpt(ex, text, { markdown: md, fallbacks: [fuzzy] });
+// 高层入口（matchExcerpt）不传 fallbacks 时已默认注入这个匹配器
 ```
 
 既有代码可继续用 `createDmpFallback(new diff_match_patch())`，但该包自 2020-05
@@ -838,7 +866,7 @@ locateExcerpt(ex, page, { markdown: md, fallbacks: [fuzzy] });
 #### 为什么不用 jsdiff / @lowlighter/diff
 
 选型的关键不是「谁活跃」，而是**有没有 Bitap 模糊定位**。我们要的不是
-「算两个字符串的差异」，而是「在 600KB 页面里模糊定位摘录的位置」——
+「算两个字符串的差异」，而是「在 600KB 文本里模糊定位摘录的位置」——
 这是 dmp 独有的 `match_main`，jsdiff 没有对应能力（它只有 `diffChars` 等全量比对），
 真要用它，seed-and-extend 的定位部分得全部自己写。
 
@@ -857,13 +885,23 @@ locateExcerpt(ex, page, { markdown: md, fallbacks: [fuzzy] });
 
 三个 adapter 共用 `createBitapFallback(match, diff)`，换后端只需提供两个函数。
 
-### T4 语义召回
+### T4 语义召回（`locateSemantic` 是实现层，不是平行入口）
 
-**外部召回 + 段内再对齐**，不让模型直接吐字符下标：
+T4 有**两种接法**，可以与 T3 叠加使用：
+
+1. **作为 fallback 之一**：自己实现 `FallbackMatcher`（`kind: 'semantic'`）放进
+   `fallbacks` 数组，与 T3 按序尝试 —— 数组里的匹配器本来就不限层；
+2. **两阶段召回**：`retriever`（召回）+ `aligner`（段内对齐），异步，坐标更准。
+   这是下面 `matchExcerpt` 内置的通道。
+
+两阶段的设计理由 —— 不让模型直接吐字符下标：
 
 1. LLM / embedding 返回的下标在长文里经常漂 —— token ≠ 字符
 2. 召回只需回答「大概是这一段」，精确定位是确定性问题
 3. 召回器可以随便换，坐标逻辑一行不动
+
+`locateSemantic` 就是这条通道的坐标适配层（把召回结果换算回源码坐标），
+普通调用方**不需要直接调它** —— 走 `matchExcerpt` 即可；只有自建召回流程时才用：
 
 ```ts
 const r = await locateSemantic(idx, '合同可以通过要约与承诺来订立', retriever, {
@@ -890,50 +928,81 @@ const myFallback: FallbackMatcher = {
 契约只到「归一化空间的 `[start, end)`」，坐标回切由 locator 统一负责 ——
 所以换成任何库都不用碰坐标逻辑。
 
-## 批量校验：`verifyExcerptFromPage` —— 命中就返回 md 原文
+## 高层入口：`matchExcerpt` —— 一步到位的结论
 
-校验「摘录是不是出自这页」时，**命中比坐标更重要**：引用要拿的是**源码片段**本身。
-所以这个入口返回的是结果对象，而不是布尔：
+只要**一条调用覆盖 T0–T4、返回「结论 + 可引用原文 + 完整元数据」**时用它：
 
 ```ts
-import { verifyExcerptFromPage, createExcerptVerifier } from '@isdk/excerpt-match';
+import { matchExcerpt, createExcerptMatcher } from '@isdk/excerpt-match';
 
-const r = await verifyExcerptFromPage(excerpt, mdSource, {
-  markdown: md,
-  retriever,                       // 可选：需要 T4 时给
-  aligner: createDmpFallback(dmp), // 可选：段内再对齐
-});
+// 零配置：md 摊平（mdast+GFM）与 T3 模糊层（diff-match-patch-es）已内置
+const r = await matchExcerpt(excerpt, mdSource);
 if (r.found) cite(r.source);       // r.source 就是 md 源码片段
 
-// 一页对多条：建一次索引，别每条重建
-const v = createExcerptVerifier(mdSource, { markdown: md, retriever });
-for (const it of items) it.ok = (await v.check(it.excerpt)).found;
+// 需要语义召回（T4）时才配置 retriever —— 本包不自带召回实现
+const r2 = await matchExcerpt(excerpt, mdSource, {
+  retriever,
+  onHit: (ex, r) => track('hit', r),   // 可选：命中即回调
+  onMiss: (ex, r) => track('miss', ex), // 可选：未命中回调，未配置就是静默
+});
+
+// 同一篇文档对多条：建一次索引，别每条重建
+const m = await createExcerptMatcher(mdSource, { retriever });
+for (const it of items) it.ok = (await m.match(it.excerpt)).found;
 ```
 
 | 字段 | 含义 |
 |---|---|
-| `found` | 是否命中（就是旧函数返回的那个布尔） |
-| `source` | **命中的 md 源码片段** = `pageContent.slice(index, index + length)`，含语法标记 |
+| `found` | 是否命中 —— 「是否出自这篇文本」的结论 |
+| `source` | **命中的 md 源码片段** = `text.slice(index, index + length)`，含语法标记 |
 | `text` | 剥掉语法标记的可见文本，供展示 |
 | `index` / `length` / `line` | 源码坐标与行号，可直接高亮 |
+| `kind` / `score` / `occurrences` / `punctFolded` / `crossesBlocks` | 继承自 `ExcerptMatch` 的完整定位元数据 —— 歧义与严格性判定不用再查第二次 |
 
-- **异步**：召回器允许返回 Promise，只要用得上 T4 就必然异步（T0–T3 本身是同步的）。
+- **内置默认，显式传入永远覆盖**：
+
+  | 选项 | 不传时 | 收紧方式 |
+  |---|---|---|
+  | `markdown` | 内置 mdast + GFM 摊平器 | 传自己的摊平器；`markdown: null` 强制纯文本 |
+  | `fallbacks` | 内置 `diff-match-patch-es` 模糊层 | `preset: 'strict'` 或显式 `fallbacks: []` |
+  | `aligner` | 与 `fallbacks` 同源（T4 段内对齐） | 传自定义对齐器 |
+  | `cjkNumeralParser` | 开了 `cjkNumerals` 自动装配 `cjk-number` | 传 `createCjkNumberParser(cjk)` |
+  | `ignoreParticles: true` | 自动升级为内置 jieba 词性判定 | 传自己的 `ParticleTagger` |
+
+  唯独 `retriever` 没有默认 —— 语义召回需要 embedding / BM25 这类外部服务，
+  不传就绝不碰语义层。
+- **T3 / T4 可叠加**：`fallbacks`（T3 与任意自定义匹配器）在同步阶段按序尝试；
+  未命中且给了 `retriever` 才动用语义召回。
+- **异步**：统一 `await`，与是否配置 T4 解耦 —— 调用方式不随档位变化。
+  （内置默认按需惰性加载，`createExcerptMatcher` 因此是 async。）
 - `minScore`（默认取 `minFallbackScore`，即 0.75）只约束 T3/T4 —— T0–T2 恒为 1。
   引用校验 / 取证建议显式抬高（如 `0.9`）；查重 / 召回维持默认即可。
-- 未命中默认 `console.warn`；`onMiss` 可换成自己的埋点。
-- 只要元数据就用 `locateExcerptFromPage`，返回完整的 `ExcerptMatch`。
+- 未命中**默认静默**；需要埋点就配 `onMiss`。
 
 从手搓的 `toLowerCase + includes` 迁过来，额外补上的是：
 md 摊平、跨块复制、跨标点差异、省略号多写法（且**按原文顺序链式命中**，
 不像「逐段 exists」那样把散落全篇的片段也算通过），以及 T4 接住的标题词注入与跨小节归纳。
 
+## 入口怎么选
+
+| API | 同步 | 层级 | 返回 | 适用 |
+|---|---|---|---|---|
+| `matchExcerpt` | 异步 | **T0–T4** | 结论 + 源码片段 + 完整元数据 | 一步到位：校验、引用、批量核查 |
+| `createExcerptMatcher` / `.match()` | 异步 | **T0–T4** | 同上 | 同一构造配置复用于多条摘录（索引只建一次） |
+| `locateExcerpt` | 同步 | T0–T3 | `ExcerptMatch` 坐标元数据 | 只要坐标，自己编排回调 |
+| `createTextIndex` / `index.locate` | 同步 | T0–T3 | 同上 | 同一篇文本查多条，复用索引 |
+| `locateSemantic` | 异步 | T4 | `ExcerptMatch` | 自建召回流程时的坐标适配层 |
+
+一句话：**要结论用 `matchExcerpt`，要坐标用 `locateExcerpt`**；
+`locateSemantic` 是实现层，普通调用方不必碰。
+
 ## 性能
 
-页面归一化（含 md 摊平）是 O(n) 的重活。逐条摘录调用 `locateExcerpt`
-会对同一页面重复整页处理。
+整篇归一化（含 md 摊平）是 O(n) 的重活。逐条摘录调用 `locateExcerpt`
+会对同一篇文本重复整篇处理。
 
 ```ts
-const idx = createPageIndex(page, { markdown: md }); // 归一化一次
+const idx = createTextIndex(text, { markdown: md }); // 归一化一次
 for (const it of items) idx.locate(it.excerpt);      // 之后每次只做比对
 ```
 
@@ -941,18 +1010,20 @@ for (const it of items) idx.locate(it.excerpt);      // 之后每次只做比对
 
 | 场景 | 单次 | 复用索引后 |
 |---|---|---|
-| 600KB 纯文本页面 | ~200ms | ~7ms |
+| 600KB 纯文本 | ~200ms | ~7ms |
 | 12KB markdown | ~60ms | ~4ms |
 
 ## 模块结构
 
 ```
-src/types.ts      统一返回契约 + 可插拔接口
-src/normalize.ts  归一化 + 原文下标映射（全库唯一"魔法"，无库可替）
-src/profiles.ts   语言策略：空白处理、分词粒度
-src/markdown.ts   md 源码 → 渲染后可见文本 + 精确源码映射
-src/locator.ts    T0/T1/T2 确定性分层 + fallback 编排 + 坐标回切
-src/adapters.ts   T3 diff-match-patch、T4 语义召回
+src/types.ts        统一返回契约 + 可插拔接口
+src/normalize.ts    归一化 + 原文下标映射（全库唯一"魔法"，无库可替）
+src/profiles.ts     语言策略：空白处理、分词粒度
+src/markdown.ts     md 源码 → 渲染后可见文本 + 精确源码映射
+src/locator.ts      T0/T1/T2 确定性分层 + fallback 编排 + 坐标回切
+src/fuzzyMatch.ts   T3 适配：diff-match-patch 接进本包坐标系
+src/semanticMatch.ts T4 适配：语义召回接进本包坐标系
+src/excerptMatcher.ts 高层入口：T0–T4 编排，结论 + 原文 + 元数据
 ```
 
 自己写的只有三件事，其余全部交给现成库：
@@ -964,7 +1035,7 @@ src/adapters.ts   T3 diff-match-patch、T4 语义召回
 ## 开发
 
 ```bash
-npm test          # vitest run，39 项
+npm test          # vitest run，300+ 项
 npm run typecheck # tsc --noEmit
 npm run build     # tsup，产出 ESM + CJS + .d.ts
 ```

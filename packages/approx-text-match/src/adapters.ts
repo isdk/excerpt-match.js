@@ -43,7 +43,7 @@ export interface DiffMatchPatchLike {
  * ```ts
  * import { diff_match_patch } from 'diff-match-patch';
  * const fuzzy = createDmpFallback(new diff_match_patch());
- * locateExcerpt(ex, page, { markdown: md, fallbacks: [fuzzy] });
+ * locateExcerpt(ex, text, { markdown: md, fallbacks: [fuzzy] });
  * ```
  */
 export function createDmpFallback(
@@ -106,7 +106,7 @@ export interface DmpEsLike {
  * ```ts
  * import * as dmpEs from 'diff-match-patch-es';
  * const fuzzy = createDmpEsFallback(dmpEs);
- * locateExcerpt(ex, page, { markdown: md, fallbacks: [fuzzy] });
+ * locateExcerpt(ex, text, { markdown: md, fallbacks: [fuzzy] });
  * ```
  *
  * @remarks

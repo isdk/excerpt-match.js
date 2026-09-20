@@ -16,26 +16,26 @@ const IGNORE = { ignorePunctuation: true as const };
  * 把所有命中都标 true，调用方就无从区分了。
  */
 describe('punctFolded 的语义', () => {
-  const page = '本院认为，被告构成根本违约。';
+  const doc = '本院认为，被告构成根本违约。';
 
   it('标点完全一致 → false（本就该 exact 命中，不该送复核）', () => {
-    const r = locateExcerpt('本院认为，被告构成根本违约。', page, IGNORE);
+    const r = locateExcerpt('本院认为，被告构成根本违约。', doc, IGNORE);
     expect(r.kind).toBe('exact');
     expect(r.punctFolded).toBe(false);
   });
 
   it('标点互换（逗号 ↔ 句号）→ true', () => {
-    const r = locateExcerpt('本院认为。被告构成根本违约，', page, IGNORE);
+    const r = locateExcerpt('本院认为。被告构成根本违约，', doc, IGNORE);
     expect(r.punctFolded).toBe(true);
   });
 
   it('摘录完全没有标点 → true', () => {
-    const r = locateExcerpt('本院认为被告构成根本违约', page, IGNORE);
+    const r = locateExcerpt('本院认为被告构成根本违约', doc, IGNORE);
     expect(r.punctFolded).toBe(true);
   });
 
   it('分号 vs 逗号 → true', () => {
-    const r = locateExcerpt('本院认为；被告构成根本违约', page, IGNORE);
+    const r = locateExcerpt('本院认为；被告构成根本违约', doc, IGNORE);
     expect(r.punctFolded).toBe(true);
   });
 
@@ -46,7 +46,7 @@ describe('punctFolded 的语义', () => {
   it('★ 全半角 / 中英标点不算跨越差异', () => {
     const half = '本院认为,被告构成根本违约.';
     expect(locateExcerpt('本院认为，被告构成根本违约。', half, IGNORE).punctFolded).toBe(false);
-    expect(locateExcerpt('本院认为,被告构成根本违约.', page, IGNORE).punctFolded).toBe(false);
+    expect(locateExcerpt('本院认为,被告构成根本违约.', doc, IGNORE).punctFolded).toBe(false);
   });
 
   /**
@@ -60,13 +60,13 @@ describe('punctFolded 的语义', () => {
 
   it('摘录是页面的字面前缀（页面末尾多一个句号）→ exact，谈不上跨差异', () => {
     // 摘录在页面里逐字符存在，T0 直接命中 —— 没有忽略任何东西，句号只是没被选进 span
-    const r = locateExcerpt('本院认为，被告构成根本违约', page, IGNORE);
+    const r = locateExcerpt('本院认为，被告构成根本违约', doc, IGNORE);
     expect(r.kind).toBe('exact');
     expect(r.punctFolded).toBe(false); // exact 恒为 false：字面一致不可能跨差异
   });
 
   it('未开启 ignorePunctuation 时恒不为 true', () => {
-    const r = locateExcerpt('本院认为被告构成根本违约', page, { ignorePunctuation: false });
+    const r = locateExcerpt('本院认为被告构成根本违约', doc, { ignorePunctuation: false });
     expect(r.kind).toBe('none');
     expect(r.punctFolded).not.toBe(true);
   });
@@ -103,8 +103,8 @@ describe('punctFolded 的语义', () => {
     const canCite = (r: { kind: string; punctFolded?: boolean }) =>
       r.kind === 'exact' || (r.kind === 'normalized' && !r.punctFolded);
 
-    const strict = locateExcerpt('本院认为，被告构成根本违约。', page, IGNORE);
-    const crossed = locateExcerpt('本院认为被告构成根本违约', page, IGNORE);
+    const strict = locateExcerpt('本院认为，被告构成根本违约。', doc, IGNORE);
+    const crossed = locateExcerpt('本院认为被告构成根本违约', doc, IGNORE);
     expect(canCite(strict)).toBe(true);
     expect(canCite(crossed)).toBe(false);
     expect(isHit(crossed)).toBe(true); // 送人工复核而非丢弃

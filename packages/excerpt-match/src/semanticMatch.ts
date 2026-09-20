@@ -2,7 +2,7 @@
  * T4 语义层：把 `@isdk/semantic-locate` 接进本库的坐标系。
  *
  * 本文件**不实现任何检索或对齐算法**，只做坐标翻译：
- * 1. 把 `PageIndex` 的归一化文本交给子包做两阶段定位
+ * 1. 把 {@link TextIndex} 的归一化文本交给子包做两阶段定位
  * 2. 把子包返回的**归一化空间偏移**换算成 md 源码坐标
  *
  * 子包刻意只处理纯字符串偏移 —— 它不需要知道归一化、md 源码、
@@ -79,8 +79,8 @@ export async function locateSemantic(
   // 子包给的是**段内相对偏移**，这里要带上段的起点换算成整页偏移。
   const aligner = options.aligner
     ? (excerpt: string, segmentText: string, segmentStart = 0) => {
-        // ★ 摘录必须用**与页面同一套**归一化选项，
-        //   否则摘录与页面不在同一个归一化空间里，永远对不上。
+        // ★ 摘录必须用**与文档同一套**归一化选项，
+        //   否则摘录与文档不在同一个归一化空间里，永远对不上。
         const needle = normalizeWithMap(excerpt, index.normalizeOptions).text;
         if (!needle) return null;
         const subHay = sliceNormalized(index.norm, segmentStart, segmentText.length);

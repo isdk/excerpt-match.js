@@ -44,7 +44,7 @@ function conflict(a: { negated: boolean }, b: { negated: boolean }): boolean {
  * @example
  * ```ts
  * // 检索器用 BM25 或 embedding，本包不关心实现
- * const hit = await locateSemantic(page, excerpt, myRetriever, {
+ * const hit = await locateSemantic(text, excerpt, myRetriever, {
  *   aligner: (ex, seg) => approxFind.find(ex, seg)?.[0] ?? null,
  * });
  * ```

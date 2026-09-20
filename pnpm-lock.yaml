@@ -239,6 +239,9 @@ importers:
       '@isdk/md-flatten':
         specifier: workspace:*
         version: link:../md-flatten
+      '@isdk/nlp-jieba':
+        specifier: ^2.2.2
+        version: 2.2.2
       '@isdk/normalize-text':
         specifier: workspace:*
         version: link:../normalize-text
@@ -254,28 +257,9 @@ importers:
       '@isdk/zh-particles':
         specifier: workspace:*
         version: link:../zh-particles
-      secondary-cache:
-        specifier: ^2.1.2
-        version: 2.1.2
-    devDependencies:
-      '@isdk/match-ex':
-        specifier: ^0.1.2
-        version: 0.1.2
-      '@isdk/nlp-jieba':
-        specifier: ^2.2.2
-        version: 2.2.2
-      '@types/diff-match-patch':
-        specifier: ^1.0.32
-        version: 1.0.36
-      '@types/node':
-        specifier: ^20.11.0
-        version: 20.19.43
       cjk-number:
         specifier: ^1.0.0
         version: 1.0.0
-      diff-match-patch:
-        specifier: ^1.0.5
-        version: 1.0.5
       diff-match-patch-es:
         specifier: ^2.0.1
         version: 2.0.1
@@ -288,6 +272,22 @@ importers:
       micromark-extension-gfm:
         specifier: ^3.0.0
         version: 3.0.0
+      secondary-cache:
+        specifier: ^2.1.2
+        version: 2.1.2
+    devDependencies:
+      '@isdk/match-ex':
+        specifier: ^0.1.2
+        version: 0.1.2
+      '@types/diff-match-patch':
+        specifier: ^1.0.32
+        version: 1.0.36
+      '@types/node':
+        specifier: ^20.11.0
+        version: 20.19.43
+      diff-match-patch:
+        specifier: ^1.0.5
+        version: 1.0.5
       tsup:
         specifier: ^8.0.0
         version: 8.5.1(postcss@8.5.28)(typescript@5.9.3)

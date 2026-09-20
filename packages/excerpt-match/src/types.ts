@@ -52,23 +52,23 @@ export type MatchKind =
  *
  * @example
  * ```ts
- * const r = locateExcerpt(excerpt, page, { markdown: md });
+ * const r = locateExcerpt(excerpt, text, { markdown: md });
  * if (!isHit(r)) return;
  * // 恒成立的坐标契约
- * const span = page.slice(r.index, r.index + r.length);
+ * const span = text.slice(r.index, r.index + r.length);
  * ```
  */
 export interface ExcerptMatch {
   /**
-   * 命中片段在 `pageContent` 中的起始下标，即 `pageContent[index]`。
+   * 命中片段在 `text` 中的起始下标，即 `text[index]`。
    * 单位是 **UTF-16 code unit**（与 `String.prototype.slice` 一致）。
    * md 模式下这是 **md 源码**中的下标，不是渲染后文本的下标。
    */
   index: number;
 
   /**
-   * 命中片段在 `pageContent` 中的长度。
-   * `pageContent.slice(index, index + length)` 即命中片段。
+   * 命中片段在 `text` 中的长度。
+   * `text.slice(index, index + length)` 即命中片段。
    *
    * @remarks
    * md 模式下 length 是**源码长度**（含语法标记），大于渲染后字数。
@@ -88,19 +88,19 @@ export interface ExcerptMatch {
    * 把所有命中都标上 true，调用方就无从区分了。
    *
    * 判定方式是：两侧各自按 `ignorePunctuation: false` 重新归一化再比较 ——
-   * 页面侧是「命中片段 + 紧邻的边缘标点」（不跨块），摘录侧保持原样。
+   * 文档侧是「命中片段 + 紧邻的边缘标点」（不跨块），摘录侧保持原样。
    * 若结果**不同**，说明是忽略标点才匹配上的：
    *
-   * | 页面 | 摘录 | `punctFolded` |
+   * | 文档 | 摘录 | `punctFolded` |
    * |---|---|---|
    * | `本院认为，被告…。` | `本院认为，被告…。` | `false` —— 标点一致，`exact` 就能命中 |
    * | `本院认为，被告…。` | `本院认为。被告…，` | `true` —— 逗号与句号互换 |
    * | `本院认为，被告…。` | `本院认为被告…` | `true` —— 摘录完全没有标点 |
-   * | `…根本违约：`（页面收冒号） | `…根本违约。` | `true` —— 边缘上的身份差异也算 |
+   * | `…根本违约：`（文档收冒号） | `…根本违约。` | `true` —— 边缘上的身份差异也算 |
    *
-   * 两侧不对称是刻意的：归一化把页面片段的首尾标点当可选分隔符删掉了，
-   * 所以页面侧要**补回**紧邻的边缘标点（否则「两边其实都有句号」会被误报、
-   * 「页面冒号摘录句号」这种真差异会因落在边上被漏报）；摘录侧的标点
+   * 两侧不对称是刻意的：归一化把文档片段的首尾标点当可选分隔符删掉了，
+   * 所以文档侧要**补回**紧邻的边缘标点（否则「两边其实都有句号」会被误报、
+   * 「文档冒号摘录句号」这种真差异会因落在边上被漏报）；摘录侧的标点
    * 本身就是要比对的内容，保持原样。
    *
    * 注意全半角、中英标点这类**宽度差异不算**：它们由 `ignoreWidth` 处理，
@@ -111,7 +111,7 @@ export interface ExcerptMatch {
    *
    * @example
    * ```ts
-   * const r = locateExcerpt(ex, page, { markdown: md, ignorePunctuation: true });
+   * const r = locateExcerpt(ex, text, { markdown: md, ignorePunctuation: true });
    * if (r.kind === 'exact' || (r.kind === 'normalized' && !r.punctFolded)) {
    *   cite(r);               // 只有严格命中才直接引用
    * } else if (isHit(r)) {
@@ -128,7 +128,7 @@ export interface ExcerptMatch {
   score: number;
 
   /**
-   * 该摘录在页面中出现的次数（上限 50）。
+   * 该摘录在文本中出现的次数（上限 50）。
    *
    * @remarks
    * `> 1` 表示摘录太短或太常见，**存在歧义**，此时 `index` 指向第一个。
@@ -136,7 +136,7 @@ export interface ExcerptMatch {
    *
    * @example
    * ```ts
-   * const r = locateExcerpt('中国市场', page);
+   * const r = locateExcerpt('中国市场', text);
    * if (r.occurrences > 1) console.warn('摘录有歧义，命中了', r.occurrences, '处');
    * ```
    */
@@ -161,7 +161,7 @@ export interface ExcerptMatch {
  *
  * @example
  * ```ts
- * const r = locateExcerpt(ex, page);
+ * const r = locateExcerpt(ex, text);
  * if (isHit(r)) highlight(r.index, r.length);
  * ```
  */
@@ -205,12 +205,12 @@ import type { MarkdownFlattener } from '@isdk/md-flatten';
  *
  * @example 严格模式（引用校验 / 取证）
  * ```ts
- * locateExcerpt(ex, page, { markdown: md }); // 不传 fallbacks，纯确定性
+ * locateExcerpt(ex, text, { markdown: md }); // 不传 fallbacks，纯确定性
  * ```
  *
  * @example 宽松模式（高亮 / 笔记锚定）
  * ```ts
- * locateExcerpt(ex, page, { markdown: md, fallbacks: [fuzzy], minFallbackScore: 0.85 });
+ * locateExcerpt(ex, text, { markdown: md, fallbacks: [fuzzy], minFallbackScore: 0.85 });
  * ```
  */
 export interface MatchOptions {
@@ -228,8 +228,8 @@ export interface MatchOptions {
    *
    * @example
    * ```ts
-   * locateExcerpt(ex, page, { preset: 'strict' });
-   * locateExcerpt(ex, page, { preset: 'loose', ignorePunctuation: false });
+   * locateExcerpt(ex, text, { preset: 'strict' });
+   * locateExcerpt(ex, text, { preset: 'loose', ignorePunctuation: false });
    * ```
    */
   preset?: PresetName;
@@ -307,13 +307,17 @@ export interface MatchOptions {
    * 中文数词解析后端，开启 `cjkNumerals` 时需要注入。
    *
    * @remarks
-   * 本库不自带中文数词解析 —— 那是另一个领域，交给 `cjk-number` 这类专门库。
+   * 本库核心不自带中文数词解析 —— 那是另一个领域，交给 `cjk-number` 这类专门库。
    * 请注入 {@link createCjkNumberParser} 的结果。
+   *
+   * 低层 API（`locateExcerpt` / `createTextIndex`）**必须注入**；
+   * 高层 API（`matchExcerpt` / `createExcerptMatcher`）不传时**自动装配**
+   * 内置的 `cjk-number` 解析器（见 `defaultCjkNumberParser`）。
    *
    * @example
    * ```ts
    * import * as cjk from 'cjk-number';
-   * locateExcerpt(ex, page, {
+   * locateExcerpt(ex, text, {
    *   cjkNumerals: true,
    *   cjkNumeralParser: createCjkNumberParser(cjk),
    * });
@@ -359,7 +363,7 @@ export interface MatchOptions {
    * 传了就**覆盖**默认模式。想保留默认只需 concat：
    * ```ts
    * import { DEFAULT_ELLIPSIS } from './src';
-   * locateExcerpt(ex, page, { ellipsis: [...DEFAULT_ELLIPSIS, '〔中略〕', /\[\s*snip\s*\]/] });
+   * locateExcerpt(ex, text, { ellipsis: [...DEFAULT_ELLIPSIS, '〔中略〕', /\[\s*snip\s*\]/] });
    * ```
    * 传空数组等价于关闭 T2（而不是退化成「处处可切」）。
    *
@@ -372,10 +376,16 @@ export interface MatchOptions {
   ellipsis?: readonly EllipsisPattern[];
 
   /**
-   * `pageContent` 是 markdown 时的摊平器。不传则视为纯文本。
+   * `text` 是 markdown 源码时的摊平器。
    *
    * @remarks
-   * **md 场景下必传**。md 语法（`**`、`[](url)`、`|`、`#`）在渲染后都不存在，
+   * - **不传** —— 高层 API（`matchExcerpt` / `createExcerptMatcher`）自动使用
+ *   内置默认摊平器（mdast + GFM，见 `defaultMarkdownFlattener`）；
+   *   低层 API（`locateExcerpt` / `createTextIndex`）视为纯文本。
+   * - **传 `null`** —— 强制按纯文本处理（文档里的 `**` 是字面内容）。
+   * - **传摊平器** —— 用你的（自定义扩展、私有能力等）。
+   *
+   * md 语法（`**`、`[](url)`、`|`、`#`）在渲染后都不存在，
    * 不摊平的话摘录几乎必然匹配失败。
    * @example
    * ```ts
@@ -384,11 +394,11 @@ export interface MatchOptions {
    * });
    * ```
    */
-  markdown?: MarkdownFlattener;
+  markdown?: MarkdownFlattener | null;
 
   /**
-   * 摘录本身是否也是 markdown（从 md 源码而非渲染后页面复制）。
-   * @defaultValue `false` —— 默认摘录来自渲染后页面
+   * 摘录本身是否也是 markdown（从 md 源码而非渲染后文档复制）。
+   * @defaultValue `false` —— 默认摘录来自渲染后文档
    */
   excerptIsMarkdown?: boolean;
 
@@ -429,14 +439,19 @@ export interface MatchOptions {
    * @defaultValue `Infinity`
    * @example 只跨相邻两段
    * ```ts
-   * locateExcerpt(ex, page, { markdown: md, maxCrossBlocks: 2 });
+   * locateExcerpt(ex, text, { markdown: md, maxCrossBlocks: 2 });
    * ```
    */
   maxCrossBlocks?: number;
 
   /**
    * T3 / T4 兜底匹配器，按数组顺序依次尝试（前面的更「硬」，命中即停）。
-   * 不传则完全不会有模糊匹配。
+   *
+   * @remarks
+   * 低层 API（`locateExcerpt` / `createTextIndex`）：不传则完全不会有模糊匹配。
+   * 高层 API（`matchExcerpt` / `createExcerptMatcher`）：不传时默认注入内置的
+   * `diff-match-patch-es` 模糊匹配器（`preset: 'strict'` 除外；显式传
+   * `fallbacks: []` 可在任何档位关闭）。
    */
   fallbacks?: readonly FallbackMatcher[];
 
@@ -483,6 +498,8 @@ export interface MatchOptions {
    *
    * - `false`（默认）—— 不折叠。**最安全**，零误判。
    * - `true` —— 内置保守模式（实词保护表）。零依赖，但保护表补不全。
+   *   高层 API（`matchExcerpt` / `createExcerptMatcher`）会自动**升级**为
+   *   内置 jieba 词性判定器（见 `defaultParticleTagger`）；低层 API 保持保守模式。
    * - {@link ParticleTagger} —— 词性感知的精确判定。推荐
    *   `createJiebaParticleTagger(jieba)`（基于 `@isdk/nlp-jieba`，词典驱动）。
    *
@@ -542,8 +559,7 @@ export interface FallbackMatcher {
 
   /**
    * 在归一化文本中查找。
-   * @param needle 归一化后的摘录
-   * @param hay 归一化后的页面（含下标映射）
+   * @param needle 归一化后的摘录    * @param hay 归一化后的文档文本（含下标映射）
    * @param ctx 语言与门限上下文
    * @returns 候选区间列表（归一化空间），或 null 表示无
    */

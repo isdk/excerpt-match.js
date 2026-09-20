@@ -1,7 +1,7 @@
 /**
- * excerpt-match —— 判断摘录是否出自页面正文，并定位到原文中的精确坐标。
+ * excerpt-match —— 判断摘录是否出自文档正文，并定位到原文中的精确坐标。
  *
- * 典型用法见 {@link locateExcerpt} 与 {@link createTextIndex}。
+ * 典型用法见 {@link locateExcerpt}（同步定位）与 {@link matchExcerpt}（高层编排）。
  *
  * ## 关于子包
  *
@@ -20,6 +20,10 @@
  *
  * **本包不再代售它们的实现。** 想单独用某个能力，请直接装对应的子包 ——
  * 那样也不会把整个定位器拖进来。
+ *
+ * 第三方依赖（jieba / cjk-number / diff-match-patch-es / mdast+GFM）已随本包
+ * **必装**，由 `default*` 系列惰性装配成高层入口的内置默认 ——
+ * `matchExcerpt(ex, text)` 零配置即可用，详见 `./defaults`。
  *
  * 本入口只保留两类东西：
  * 1. **本包自己实现的** API（定位、预设、语言策略、T3/T4 适配工厂）
@@ -44,8 +48,8 @@ export { NO_MATCH, isHit, DEFAULT_ELLIPSIS } from './types';
 export { STRICT, DEFAULT_PRESET, LOOSE, withPreset } from './presets';
 export type { PresetName } from './presets';
 
-export { createTextIndex, createPageIndex, locateExcerpt, spanFromNormalized } from './locator';
-export type { TextIndex, PageIndex } from './locator';
+export { createTextIndex, locateExcerpt, spanFromNormalized } from './locator';
+export type { TextIndex } from './locator';
 
 export { languageProfileFor, detectLanguageProfile, tokenize } from './languageProfiles';
 export type { LanguageProfile } from './languageProfiles';
@@ -64,13 +68,26 @@ export {
 } from './fuzzyMatch';
 export { locateSemantic } from './semanticMatch';
 export {
-  createExcerptVerifier,
-  verifyExcerptFromPage,
-  locateExcerptFromPage,
-} from './excerptVerifier';
+  createExcerptMatcher,
+  matchExcerpt,
+} from './excerptMatcher';
 export type {
-  ExcerptVerification, ExcerptVerifier, ExcerptVerifierOptions,
-} from './excerptVerifier';
+  ExcerptMatchResult, ExcerptMatcher, ExcerptMatcherOptions,
+} from './excerptMatcher';
+
+/**
+ * 内置默认依赖装配（Node 惰性加载，见 `./defaults` 的文件头说明）。
+ *
+ * @remarks
+ * 高层入口已自动使用它们；导出出来是给需要「在默认之上做微调」的调用方
+ * （例如给默认摊平器套一层缓存，或在默认模糊层之外再追加一个匹配器）。
+ */
+export {
+  defaultCjkNumberParser,
+  defaultFuzzyFallback,
+  defaultMarkdownFlattener,
+  defaultParticleTagger,
+} from './defaults';
 
 // #endregion
 

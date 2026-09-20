@@ -37,7 +37,7 @@ npm i @isdk/semantic-locate
 ```ts
 import { locateSemantic } from '@isdk/semantic-locate';
 
-const hit = await locateSemantic(page, excerpt, myRetriever, {
+const hit = await locateSemantic(text, excerpt, myRetriever, {
   aligner: (ex, seg, segStart) => approxFind.find(ex, seg)?.[0] ?? null,
   checkPolarity: true,
 });
@@ -69,7 +69,7 @@ multilingual models need them). This package **does not detect the language** â€
 that is the caller's job.
 
 ```ts
-const hit = await locateSemantic(page, excerpt, myRetriever, {
+const hit = await locateSemantic(text, excerpt, myRetriever, {
   locale: 'zh',
   tokenize: (t) => Array.from(t),
   aligner: myAligner,

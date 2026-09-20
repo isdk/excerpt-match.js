@@ -20,16 +20,16 @@ describe.skipIf(!dmpEs)('diff-match-patch-es（推荐后端）', () => {
   const find = createDmpEsFallback(dmpEs as never);
 
   it('★ 跨过标点差异能定位', () => {
-    const page = '本院认为，被告的行为已经构成根本违约，应当承担赔偿责任。';
-    const r = find.find('本院认为被告的行为构成根本违约', page);
+    const doc = '本院认为，被告的行为已经构成根本违约，应当承担赔偿责任。';
+    const r = find.find('本院认为被告的行为构成根本违约', doc);
     expect(r).not.toBeNull();
     expect(r![0].score).toBeGreaterThan(0.8);
   });
 
   it('★ 区间连续且可直接 slice', () => {
-    const page = '使用 TensorFlow 框架';
-    const r = find.find('使用TensorFlow框架', page)!;
-    const span = page.slice(r[0].start, r[0].end);
+    const doc = '使用 TensorFlow 框架';
+    const r = find.find('使用TensorFlow框架', doc)!;
+    const span = doc.slice(r[0].start, r[0].end);
     expect(span).toBe('使用 TensorFlow 框架');
   });
 

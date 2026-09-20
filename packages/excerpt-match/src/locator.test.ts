@@ -44,10 +44,10 @@ describe('统一返回契约', () => {
 
 describe('确定性层 T0/T1/T2', () => {
   it('T0 精确', () => {
-    const page = '前缀人工智能正在改变世界后缀';
-    const r = locateExcerpt('人工智能正在改变世界', page);
+    const doc = '前缀人工智能正在改变世界后缀';
+    const r = locateExcerpt('人工智能正在改变世界', doc);
     expect(r.kind).toBe('exact');
-    expect(page.slice(r.index, r.index + r.length)).toBe('人工智能正在改变世界');
+    expect(doc.slice(r.index, r.index + r.length)).toBe('人工智能正在改变世界');
   });
 
   it('T1 空白 / 全半角 / 标点 / 大小写 / 零宽', () => {
@@ -58,8 +58,8 @@ describe('确定性层 T0/T1/T2', () => {
       ['你好\n世界', '你好 世界'],
       ['ＡＢＣ　１２３', 'abc 123'],
     ];
-    for (const [page, ex] of cases) {
-      const r = locateExcerpt(ex, page);
+    for (const [doc, ex] of cases) {
+      const r = locateExcerpt(ex, doc);
       expect(r.kind).toBe('normalized');
       expect(r.score).toBe(1);
     }
@@ -70,39 +70,39 @@ describe('确定性层 T0/T1/T2', () => {
   });
 
   it('T2 省略号分段锚点', () => {
-    const page =
+    const doc =
       '第一条 为了保护民事主体的合法权益，调整民事关系，维护社会和经济秩序，适应中国特色社会主义发展要求，弘扬社会主义核心价值观，根据宪法，制定本法。';
-    const r = locateExcerpt('为了保护民事主体的合法权益……根据宪法，制定本法。', page);
+    const r = locateExcerpt('为了保护民事主体的合法权益……根据宪法，制定本法。', doc);
     expect(r.kind).toBe('segmented');
-    const s = page.slice(r.index, r.index + r.length);
+    const s = doc.slice(r.index, r.index + r.length);
     expect(s.startsWith('为了保护')).toBe(true);
     expect(s.endsWith('制定本法。')).toBe(true);
   });
 
   it('T2 拒绝过短碎片', () => {
-    const page = '甲说了一句话，乙说了另一句话，丙又说了第三句话';
-    expect(locateExcerpt('甲……丙', page).kind).toBe('none');
+    const doc = '甲说了一句话，乙说了另一句话，丙又说了第三句话';
+    expect(locateExcerpt('甲……丙', doc).kind).toBe('none');
   });
 });
 
 describe('坐标不变量', () => {
   it('300 次随机切片：必命中且坐标还原', () => {
-    const page =
+    const doc =
       '最高人民法院关于适用《中华人民共和国民法典》合同编通则若干问题的解释（法释〔2023〕13号），自 2023 年 12 月 5 日起施行。\n\n' +
       '其中第 5 条规定：当事人一方不履行合同义务或者履行合同义务不符合约定的，应当承担继续履行、采取补救措施或者赔偿损失等违约责任。  \n' +
       'The court held that the contract was valid and enforceable.';
     let checked = 0;
     for (let k = 0; k < 300; k++) {
-      const i = Math.floor(Math.random() * page.length);
-      const j = Math.min(page.length, i + 6 + Math.floor(Math.random() * 40));
-      const ex = page.slice(i, j);
+      const i = Math.floor(Math.random() * doc.length);
+      const j = Math.min(doc.length, i + 6 + Math.floor(Math.random() * 40));
+      const ex = doc.slice(i, j);
       if (ex.trim().length < 4) continue;
-      if (page.indexOf(ex) !== i) continue;
-      const r = locateExcerpt(ex, page);
+      if (doc.indexOf(ex) !== i) continue;
+      const r = locateExcerpt(ex, doc);
       expect(isHit(r)).toBe(true);
       expect(r.index).toBe(i);
       expect(r.length).toBe(ex.length);
-      expect(page.slice(r.index, r.index + r.length)).toBe(ex);
+      expect(doc.slice(r.index, r.index + r.length)).toBe(ex);
       checked++;
     }
     expect(checked).toBeGreaterThan(50);
@@ -111,22 +111,22 @@ describe('坐标不变量', () => {
 
 describe('T3：diff-match-patch', () => {
   it('中文漏字', () => {
-    const page = '本院认为，被告的行为已经构成根本违约，应当承担违约责任。';
-    const r = locateExcerpt('本院认为，被告的行为构成违约', page, { fallbacks: [fuzzy] });
+    const doc = '本院认为，被告的行为已经构成根本违约，应当承担违约责任。';
+    const r = locateExcerpt('本院认为，被告的行为构成违约', doc, { fallbacks: [fuzzy] });
     expect(r.kind).toBe('fuzzy');
     expect(r.via).toBe('diff-match-patch');
     expect(r.score).toBeGreaterThan(0.7);
   });
 
   it('英文错字', () => {
-    const page = 'The quick brown fox jumps over the lazy dog.';
-    const r = locateExcerpt('The quick brown fox jump over the lazy dog', page, { fallbacks: [fuzzy] });
+    const doc = 'The quick brown fox jumps over the lazy dog.';
+    const r = locateExcerpt('The quick brown fox jump over the lazy dog', doc, { fallbacks: [fuzzy] });
     expect(r.score).toBeGreaterThan(0.9);
   });
 
   it('偏差过大 → none', () => {
-    const page = '重庆市渝中区人民法院受理了该案，并于同日立案。';
-    expect(locateExcerpt('北京市朝阳区人民检察院提起公诉', page, { fallbacks: [fuzzy] }).kind).toBe('none');
+    const doc = '重庆市渝中区人民法院受理了该案，并于同日立案。';
+    expect(locateExcerpt('北京市朝阳区人民检察院提起公诉', doc, { fallbacks: [fuzzy] }).kind).toBe('none');
   });
 
   it('无 fallback 时不做模糊（严格模式）', () => {
@@ -138,7 +138,7 @@ describe('T3：diff-match-patch', () => {
 
 
 describe('自定义省略号（T2）', () => {
-  const page =
+  const doc =
     '第一条 为了保护民事主体的合法权益，调整民事关系，维护社会和经济秩序，' +
     '适应中国特色社会主义发展要求，弘扬社会主义核心价值观，根据宪法，制定本法。';
 
@@ -148,20 +148,20 @@ describe('自定义省略号（T2）', () => {
       '为了保护民事主体的合法权益...根据宪法，制定本法。',
       '为了保护民事主体的合法权益。。。根据宪法，制定本法。',
     ]) {
-      const r = locateExcerpt(ex, page);
+      const r = locateExcerpt(ex, doc);
       expect(r.kind).toBe('segmented');
-      expect(page.slice(r.index, r.index + r.length).startsWith('为了保护')).toBe(true);
+      expect(doc.slice(r.index, r.index + r.length).startsWith('为了保护')).toBe(true);
     }
   });
 
   it('自定义：完全替换默认模式', () => {
     const ex = '为了保护民事主体的合法权益〔中略〕根据宪法，制定本法。';
     // 默认模式不认 〔中略〕
-    expect(locateExcerpt(ex, page).kind).toBe('none');
+    expect(locateExcerpt(ex, doc).kind).toBe('none');
     // 传入自定义模式后命中
-    const r = locateExcerpt(ex, page, { ellipsis: ['〔中略〕'] });
+    const r = locateExcerpt(ex, doc, { ellipsis: ['〔中略〕'] });
     expect(r.kind).toBe('segmented');
-    expect(page.slice(r.index, r.index + r.length)).toContain('根据宪法，制定本法。');
+    expect(doc.slice(r.index, r.index + r.length)).toContain('根据宪法，制定本法。');
   });
 
   it('自定义：支持多个模式 + 正则', () => {
@@ -170,25 +170,25 @@ describe('自定义省略号（T2）', () => {
       ['为了保护民事主体的合法权益[snip]根据宪法，制定本法。', '[snip]'],
       ['为了保护民事主体的合法权益<<<>>>根据宪法，制定本法。', '<<<>>>'],
     ];
-    const r0 = locateExcerpt(cases[0][0], page, { ellipsis: ['〔中略〕', '[snip]', '<<<>>>'] });
+    const r0 = locateExcerpt(cases[0][0], doc, { ellipsis: ['〔中略〕', '[snip]', '<<<>>>'] });
     expect(r0.kind).toBe('segmented');
     for (const [ex] of cases) {
-      expect(locateExcerpt(ex, page, { ellipsis: ['〔中略〕', '[snip]', '<<<>>>'] }).kind).toBe('segmented');
+      expect(locateExcerpt(ex, doc, { ellipsis: ['〔中略〕', '[snip]', '<<<>>>'] }).kind).toBe('segmented');
     }
   });
 
   it('字符串按字面量匹配，不被当成正则', () => {
     // '...' 若被当正则会匹配任意三字符，导致处处可切
-    const r = locateExcerpt('为了保护民事主体的合法权益...根据宪法，制定本法。', page, { ellipsis: ['...'] });
+    const r = locateExcerpt('为了保护民事主体的合法权益...根据宪法，制定本法。', doc, { ellipsis: ['...'] });
     expect(r.kind).toBe('segmented');
     // 三个任意字符不应被当作省略号
-    expect(locateExcerpt('为了保护民事主体的合法权益abc根据宪法，制定本法。', page, { ellipsis: ['...'] }).kind).toBe('none');
+    expect(locateExcerpt('为了保护民事主体的合法权益abc根据宪法，制定本法。', doc, { ellipsis: ['...'] }).kind).toBe('none');
   });
 
   it('正则模式按原样使用', () => {
     const r = locateExcerpt(
       '为了保护民事主体的合法权益---根据宪法，制定本法。',
-      page,
+      doc,
       { ellipsis: [/\s*-{2,}\s*/] }
     );
     expect(r.kind).toBe('segmented');
@@ -196,10 +196,10 @@ describe('自定义省略号（T2）', () => {
 
   it('可 concat 默认模式（保留 + 追加）', () => {
     const ex = '为了保护民事主体的合法权益〔中略〕根据宪法，制定本法。';
-    const r = locateExcerpt(ex, page, { ellipsis: [...DEFAULT_ELLIPSIS, '〔中略〕'] });
+    const r = locateExcerpt(ex, doc, { ellipsis: [...DEFAULT_ELLIPSIS, '〔中略〕'] });
     expect(r.kind).toBe('segmented');
     // 默认模式仍然生效
-    expect(locateExcerpt('为了保护民事主体的合法权益……根据宪法，制定本法。', page, {
+    expect(locateExcerpt('为了保护民事主体的合法权益……根据宪法，制定本法。', doc, {
       ellipsis: [...DEFAULT_ELLIPSIS, '〔中略〕'],
     }).kind).toBe('segmented');
   });
@@ -208,31 +208,31 @@ describe('自定义省略号（T2）', () => {
     // 切分发生在归一化之后，NFKC 把 〔中略〕 折成 [中略]。
     // 字符串模式必须先过同样的归一化，否则永远匹配不上。
     const ex = '为了保护民事主体的合法权益〔中略〕根据宪法，制定本法。';
-    expect(locateExcerpt(ex, page, { ellipsis: ['〔中略〕'] }).kind).toBe('segmented');
+    expect(locateExcerpt(ex, doc, { ellipsis: ['〔中略〕'] }).kind).toBe('segmented');
     // 直接写归一化后的半角形式同样可用
-    expect(locateExcerpt(ex, page, { ellipsis: ['[中略]'] }).kind).toBe('segmented');
+    expect(locateExcerpt(ex, doc, { ellipsis: ['[中略]'] }).kind).toBe('segmented');
   });
 
   it('空数组 = 关闭 T2（不是「处处可切」）', () => {
     const ex = '为了保护民事主体的合法权益……根据宪法，制定本法。';
-    expect(locateExcerpt(ex, page).kind).toBe('segmented');
-    expect(locateExcerpt(ex, page, { ellipsis: [] }).kind).toBe('none');
+    expect(locateExcerpt(ex, doc).kind).toBe('segmented');
+    expect(locateExcerpt(ex, doc, { ellipsis: [] }).kind).toBe('none');
   });
 
   it('重复调用结果稳定（lastIndex 不残留）', () => {
     const ex = '为了保护民事主体的合法权益……根据宪法，制定本法。';
     for (let i = 0; i < 5; i++) {
-      expect(locateExcerpt(ex, page).kind).toBe('segmented');
+      expect(locateExcerpt(ex, doc).kind).toBe('segmented');
     }
   });
 });
 
 describe('T3 后端：diff-match-patch-es', () => {
   it('中文漏字能命中，分数与原版接近', () => {
-    const page = '本院认为，被告的行为已经构成根本违约，应当承担违约责任。';
+    const doc = '本院认为，被告的行为已经构成根本违约，应当承担违约责任。';
     const ex = '本院认为，被告的行为构成违约';
-    const a = locateExcerpt(ex, page, { fallbacks: [fuzzy] });
-    const b = locateExcerpt(ex, page, { fallbacks: [fuzzyEs] });
+    const a = locateExcerpt(ex, doc, { fallbacks: [fuzzy] });
+    const b = locateExcerpt(ex, doc, { fallbacks: [fuzzyEs] });
     expect(b.kind).toBe('fuzzy');
     expect(b.via).toBe('diff-match-patch-es');
     expect(b.score).toBeGreaterThan(0.7);
@@ -240,25 +240,25 @@ describe('T3 后端：diff-match-patch-es', () => {
   });
 
   it('英文错字', () => {
-    const page = 'The quick brown fox jumps over the lazy dog.';
-    const r = locateExcerpt('The quick brown fox jump over the lazy dog', page, { fallbacks: [fuzzyEs] });
+    const doc = 'The quick brown fox jumps over the lazy dog.';
+    const r = locateExcerpt('The quick brown fox jump over the lazy dog', doc, { fallbacks: [fuzzyEs] });
     expect(r.score).toBeGreaterThan(0.85);
   });
 
   it('无 fallback 时不做模糊', () => {
-    const page = '本院认为，被告的行为已经构成根本违约，应当承担违约责任。';
-    expect(locateExcerpt('本院认为，被告的行为构成违约', page).kind).toBe('none');
+    const doc = '本院认为，被告的行为已经构成根本违约，应当承担违约责任。';
+    expect(locateExcerpt('本院认为，被告的行为构成违约', doc).kind).toBe('none');
   });
 });
 
 
 describe('语义等价 vs 语义相反（极性守卫）', () => {
-  const page = '前缀人工智能正在改变世界后缀';
+  const doc = '前缀人工智能正在改变世界后缀';
 
   it('相似度区分不了「少虚词」和「多否定词」—— 这是守卫存在的理由', () => {
     const off = { fallbacks: [fuzzyEs], minFallbackScore: 0, checkPolarity: false };
-    const a = locateExcerpt('人工智能在改变世界', page, off);   // 等价
-    const b = locateExcerpt('人工智能没在改变世界', page, off); // 相反
+    const a = locateExcerpt('人工智能在改变世界', doc, off);   // 等价
+    const b = locateExcerpt('人工智能没在改变世界', doc, off); // 相反
     expect(a.kind).toBe('fuzzy');
     expect(b.kind).toBe('fuzzy');
     // 两者分数只差 0.05 左右，调阈值无解
@@ -266,13 +266,13 @@ describe('语义等价 vs 语义相反（极性守卫）', () => {
   });
 
   it('语义等价（少「正」）→ 接受', () => {
-    const r = locateExcerpt('人工智能在改变世界', page, { fallbacks: [fuzzyEs] });
+    const r = locateExcerpt('人工智能在改变世界', doc, { fallbacks: [fuzzyEs] });
     expect(r.kind).toBe('fuzzy');
     expect(r.score).toBeGreaterThan(0.9);
   });
 
   it('语义相反（多「没」）→ 拒绝', () => {
-    expect(locateExcerpt('人工智能没在改变世界', page, { fallbacks: [fuzzyEs] }).kind).toBe('none');
+    expect(locateExcerpt('人工智能没在改变世界', doc, { fallbacks: [fuzzyEs] }).kind).toBe('none');
   });
 
   it('否定词在命中 span 之外不干扰', () => {
@@ -307,7 +307,7 @@ describe('语义等价 vs 语义相反（极性守卫）', () => {
   });
 
   it('checkPolarity: false 可关闭守卫（退回纯相似度）', () => {
-    const r = locateExcerpt('人工智能没在改变世界', page, {
+    const r = locateExcerpt('人工智能没在改变世界', doc, {
       fallbacks: [fuzzyEs],
       minFallbackScore: 0,
       checkPolarity: false,
@@ -322,26 +322,26 @@ describe('语义等价 vs 语义相反（极性守卫）', () => {
 });
 
 describe('中文结构助词 的 / 地 / 得', () => {
-  const page = '他高兴地接受了这份合同';
+  const doc = '他高兴地接受了这份合同';
 
   it('默认不折叠：最安全', () => {
     // 默认 false —— 误判代价高于漏判
-    expect(locateExcerpt('他高兴的接受了这份合同', page).kind).toBe('none');
-    expect(locateExcerpt('他高兴得接受了这份合同', page).kind).toBe('none');
-    expect(locateExcerpt('他高兴地接受了这份合同', page).kind).toBe('exact');
+    expect(locateExcerpt('他高兴的接受了这份合同', doc).kind).toBe('none');
+    expect(locateExcerpt('他高兴得接受了这份合同', doc).kind).toBe('none');
+    expect(locateExcerpt('他高兴地接受了这份合同', doc).kind).toBe('exact');
   });
 
   it('ignoreParticles: true → 保守模式，助词混用命中', () => {
     for (const ex of ['他高兴的接受了这份合同', '他高兴得接受了这份合同']) {
-      const r = locateExcerpt(ex, page, { ignoreParticles: true });
+      const r = locateExcerpt(ex, doc, { ignoreParticles: true });
       expect(isHit(r)).toBe(true);
       expect(r.score).toBe(1); // 确定性层，不降级
     }
   });
 
   it('坐标仍然精确：span 是原始源码片段', () => {
-    const r = locateExcerpt('他高兴的接受了这份合同', page, { ignoreParticles: true });
-    expect(page.slice(r.index, r.index + r.length)).toBe('他高兴地接受了这份合同');
+    const r = locateExcerpt('他高兴的接受了这份合同', doc, { ignoreParticles: true });
+    expect(doc.slice(r.index, r.index + r.length)).toBe('他高兴地接受了这份合同');
   });
 
   it('保守模式挡住已知实词', () => {
@@ -621,10 +621,10 @@ describe('辅助平面字符：字形簇边界', () => {
   });
 
   it('辅助平面字符上的定位仍然精确', () => {
-    const page = '前缀👨‍👩‍👧‍👦后缀';
-    const r = locateExcerpt('👨‍👩‍👧‍👦', page);
+    const doc = '前缀👨‍👩‍👧‍👦后缀';
+    const r = locateExcerpt('👨‍👩‍👧‍👦', doc);
     expect(isHit(r)).toBe(true);
-    expect(page.slice(r.index, r.index + r.length)).toBe('👨‍👩‍👧‍👦');
+    expect(doc.slice(r.index, r.index + r.length)).toBe('👨‍👩‍👧‍👦');
   });
 });
 
@@ -693,12 +693,12 @@ describe('语言层', () => {
 describe('工程：缓存与歧义', () => {
   it('createTextIndex 复用归一化', () => {
     const unit = '本院经审理查明，二〇二三年五月十日，原告与被告签订《房屋买卖合同》，约定房屋总价款为人民币三百万元。';
-    const page = unit.repeat(6000);
+    const doc = unit.repeat(6000);
     const ex = '原告与被告签订<房屋买卖合同>';
     const t0 = Date.now();
-    locateExcerpt(ex, page);
+    locateExcerpt(ex, doc);
     const once = Date.now() - t0;
-    const idx = createTextIndex(page);
+    const idx = createTextIndex(doc);
     const t1 = Date.now();
     for (let i = 0; i < 20; i++) idx.locate(ex);
     const cached = (Date.now() - t1) / 20;
@@ -706,7 +706,7 @@ describe('工程：缓存与歧义', () => {
   });
 
   it('短摘录报 occurrences 提示歧义', () => {
-    const page = '中国市场很大，中国市场也很复杂，中国市场需要长期主义。';
-    expect(locateExcerpt('中国市场', page).occurrences).toBeGreaterThanOrEqual(3);
+    const doc = '中国市场很大，中国市场也很复杂，中国市场需要长期主义。';
+    expect(locateExcerpt('中国市场', doc).occurrences).toBeGreaterThanOrEqual(3);
   });
 });
