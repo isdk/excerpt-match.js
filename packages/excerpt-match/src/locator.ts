@@ -152,6 +152,24 @@ interface View {
   rawIdx: NormalizedText | null;
   /** 归一化文本（T1/T2 用） */
   norm: NormalizedText;
+  /**
+   * **本视图 raw 坐标系**里的块切片；空 = 无块概念（纯文本模式）。
+   *
+   * 注意坐标系：严格视图的 raw 是摊平文本（块切片即 `flat.blocks` 原样），
+   * joined 视图的 raw 剥掉了分隔符（块切片须换算，见 `rebaseBlocksToJoined`）。
+   * 供 `spanWithEdgePunctuation` 把边缘标点扩展夹回块内。
+   */
+  blocks?: readonly FlatBlock[];
+  /**
+   * 归一化下标 → **本视图 raw** 下标；缺省 = `norm.back` 已指向本视图 raw。
+   *
+   * @remarks
+   * 为什么 joined 视图必须单独提供：`normalizeWithMap(j)` 会把 `j.back`
+   * （joined→摊平）复合进结果的 `back`，所以 joined 视图的 `norm.back`
+   * 指向的是**摊平文本**而不是 joined raw —— 直接拿来切 `raw` 会整体错位
+   * （偏移量 = 前面剥掉的分隔符数）。这里用 `j.back` 二分补上第二跳。
+   */
+  normToRaw?: readonly number[];
 }
 
 interface Built {
@@ -174,7 +192,7 @@ function buildHay(pageContent: string, r: ResolvedOptions): Built {
   if (!r.markdown) {
     const norm = normalizeWithMap(pageContent, toNormalizationOptions(r));
     return {
-      strict: { raw: pageContent, rawIdx: null, norm },
+      strict: { raw: pageContent, rawIdx: null, norm, blocks: [] },
       blocks: [],
       flat: null,
       joined: () => null,
@@ -184,17 +202,70 @@ function buildHay(pageContent: string, r: ResolvedOptions): Built {
   const hay = normalizeWithMap(flat, toNormalizationOptions(r));
   let cached: View | null | undefined;
   return {
-    strict: { raw: flat.text, rawIdx: flat, norm: hay },
+    // 严格视图的 raw 就是摊平文本：块切片原样即在同一坐标系
+    strict: { raw: flat.text, rawIdx: flat, norm: hay, blocks: flat.blocks },
     blocks: rebaseBlocks(flat.blocks, hay.back),
     flat,
     joined(): View | null {
       if (cached === undefined) {
         const j = r.maxCrossBlocks >= 1 ? deriveJoined(flat) : null;
-        cached = j ? { raw: j.text, rawIdx: j, norm: normalizeWithMap(j, toNormalizationOptions(r)) } : null;
+        if (!j) {
+          cached = null;
+        } else {
+          const norm = normalizeWithMap(j, toNormalizationOptions(r));
+          cached = {
+            raw: j.text,
+            rawIdx: j,
+            norm,
+            // norm.back 指向摊平文本（见 View.normToRaw 的备注），补第二跳到 joined raw
+            normToRaw: mapFlatBackToJoined(norm.back, j.back ?? []),
+            // joined 的 raw 已剥掉分隔符：块切片必须换算到同一坐标系，
+            // spanWithEdgePunctuation 才能把扩展夹回块内
+            blocks: rebaseBlocksToJoined(flat.blocks, j.back ?? []),
+          };
+        }
       }
       return cached;
     },
   };
+}
+
+/**
+ * 块切片换算：摊平 norm 坐标 → joined raw 坐标。
+ *
+ * joined 的 raw 是摊平文本剥掉分隔符后的结果，`back`（= keep 数组 + 末尾哨兵）
+ * 升序，且 `raw 下标 = 严格小于 q 的元素个数` —— 直接二分即得。
+ *
+ * 注意 `end` 落在分隔符位置上时（块切片的 end 本就是 Exclusive，可能指向紧随其后的分隔符），
+ * 二分结果恰好是「块内最后一个 raw 字符的下标 + 1」，作为 Exclusive 终点正合适。
+ */
+function rebaseBlocksToJoined(blocks: readonly FlatBlock[], back: number[]): FlatBlock[] {
+  return blocks.map((b) => ({ ...b, start: flatPosToJoinedRaw(back, b.start), end: flatPosToJoinedRaw(back, b.end) }));
+}
+
+/**
+ * 归一化 `back`（归一化下标 → 摊平文本下标）再补一跳：摊平下标 → joined raw 下标。
+ *
+ * @remarks
+ * joined 视图的 `norm.back` 指向**摊平文本**（`normalizeWithMap(j)` 把 `j.back`
+ * 复合进去了），而 punctFolded 要在 joined raw 上取片段 —— 必须再过一次
+ * `j.back`（升序，`raw 下标 = 严格小于 q 的元素个数`）。
+ */
+function mapFlatBackToJoined(normBack: readonly number[] | undefined, keep: number[]): readonly number[] | undefined {
+  if (!normBack || normBack.length === 0) return undefined;
+  return normBack.map((f) => flatPosToJoinedRaw(keep, f));
+}
+
+/** 摊平下标 → joined raw 下标：`j.back`（= keep + 末尾哨兵）内二分 */
+function flatPosToJoinedRaw(back: number[], q: number): number {
+  let lo = 0;
+  let hi = back.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if ((back[mid] ?? 0) < q) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
 }
 
 /** 块边界是「摊平文本」的坐标系，而 hay.text 是归一化后的 —— 必须换算，否则对不上 */
@@ -364,39 +435,116 @@ export function spanFromNormalized(
 }
 
 /**
- * 取归一化区间在「渲染文本」中的片段。
+ * 取归一化区间在「渲染文本」中的半开区间 `[start, end)`。
  *
  * md 模式下 `view.raw` 是**摊平后**的可见文本（已剥掉 `**`、`[](url)` 等语法），
  * 用它和摘录比较才有意义 —— 拿 md 源码比会把语法标记算进差异里。
  */
-function renderedSpanOf(view: View, start: number, end: number): string {
+function rawBoundsOf(view: View, start: number, end: number): [number, number] {
   const e = Math.max(start, end - 1);
+  // joined 视图：normToRaw 已把 norm.back 补到本视图 raw（摊平 → joined 两跳）
+  const toRaw = view.normToRaw;
+  if (toRaw && toRaw.length > 0) {
+    const bs = toRaw[Math.max(0, Math.min(start, toRaw.length - 1))] ?? start;
+    const be = toRaw[Math.max(0, Math.min(e, toRaw.length - 1))] ?? e;
+    return [bs, be + 1];
+  }
   const back = view.norm.back;
   if (back && back.length > 0) {
     // back：归一化下标 → view.raw（摊平后的可见文本）下标
     const bs = back[Math.max(0, Math.min(start, back.length - 1))] ?? start;
     const be = back[Math.max(0, Math.min(e, back.length - 1))] ?? e;
-    return view.raw.slice(bs, be + 1);
+    return [bs, be + 1];
   }
   // 退化：无 back 时用 map 直接回切（纯文本模式下 view.raw 就是源码）
   const map = view.norm.map;
   const mapEnd = view.norm.mapEnd ?? map;
   const bs = map[Math.max(0, Math.min(start, map.length - 1))];
   const be = mapEnd[Math.max(0, Math.min(e, mapEnd.length - 1))];
-  return view.raw.slice(bs, Math.max(bs, be));
+  return [bs, Math.max(bs, be)];
 }
 
-/** 首尾的标点 / 空白 —— 归一化阶段已把它们当作可选分隔符丢弃，比较时两侧都要先削掉 */
-const EDGE_PUNCT = /^[\p{P}\p{Z}]+|[\p{P}\p{Z}]+$/gu;
-const trimEdges = (s: string): string => s.replace(EDGE_PUNCT, '');
+/**
+ * 紧邻的标点 / 空白。
+ *
+ * 注意 `\n` 是 `Cc` 不在 `\p{P}` / `\p{Z}` 里 —— 换行天然是扩展的止点：
+ * 它是块边界，**下一段的内容不属于本次命中**，不能顺着吞进去。
+ */
+const EDGE_PUNCT = /[\p{P}\p{Z}]/u;
+
+/**
+ * 命中片段的渲染文本，**含两侧紧邻的边缘标点**，但**不跨块**。
+ *
+ * @remarks
+ * 归一化把首/尾的标点当作可选分隔符丢弃，span 因此常常不含末尾句号 ——
+ * 直接拿 span 与摘录比，会出两种错：
+ *
+ * - 「两边其实都有句号」→ span 侧没有 → **误报**差异（全半角本就不算差异）
+ * - 「页面是冒号、摘录是句号」→ 真差异恰好落在边缘 → **漏报**
+ *
+ * 把页面侧补上紧邻的标点，两种错同时消失：有就有、是什么就是什么。
+ * 摘录侧保持原样 —— 它的标点有没有、是什么，本身就是要比对的内容。
+ *
+ * 两条止步规则：
+ * - **止于换行**（严格视图生效）：`\n` 是 `Cc` 不在 `\p{P}` / `\p{Z}` 里，
+ *   而换行是块边界，下一段的内容不属于本次命中，不能顺着吞进去。
+ * - **止于块边界**（joined 视图生效）：joined 的 raw 已剥掉分隔符，
+ *   相邻块直接贴在一起，仅靠上一条挡不住 —— 扩展被夹在本视图块切片的
+ *   `[start, end)` 内，不会吞进下一块开头（或上一块结尾）的标点。
+ *   否则「摘录末尾的句号其实来自下一块」会被误判成无差异而假放行。
+ */
+function spanWithEdgePunctuation(view: View, start: number, end: number): string {
+  const [bs0, be0] = rawBoundsOf(view, start, end);
+  const raw = view.raw;
+  // 扩展边界：默认整段 raw；有块切片时夹进命中块（们）的 [start, end) 内。
+  // 命中跨多个块时取包围盒 —— 块间的分隔符已剥掉，包围盒内就是拼接后的连续命中区。
+  let lo = 0;
+  let hi = raw.length;
+  const hit = hitBlockBounds(view.blocks, bs0, be0);
+  if (hit) {
+    lo = hit[0];
+    hi = hit[1];
+  }
+  let s = Math.max(lo, bs0);
+  while (s > lo && EDGE_PUNCT.test(raw[s - 1] ?? '')) s--;
+  let e = Math.min(hi, be0);
+  while (e < hi && EDGE_PUNCT.test(raw[e] ?? '')) e++;
+  return raw.slice(s, e);
+}
+
+/**
+ * 命中区间所在块（们）的 raw 包围盒；`null` = 无块概念或命中落在块外。
+ *
+ * @remarks
+ * 半开区间判定：`b.start < end && start < b.end`，与 `withBlockInfo` 同口径。
+ * 有意不取「最近块」：命中若无缘无故落在块外，说明坐标换算已出问题，
+ * 宁可退回不夹（保守，保持旧行为）也不硬拉进某个块。
+ */
+function hitBlockBounds(blocks: readonly FlatBlock[] | undefined, start: number, end: number): [number, number] | null {
+  if (!blocks || blocks.length === 0) return null;
+  let lo = -1;
+  let hi = -1;
+  for (const b of blocks) {
+    if (b.start < end && start < b.end) {
+      if (lo < 0) lo = b.start;
+      hi = Math.max(hi, b.end);
+    }
+  }
+  return lo < 0 ? null : [lo, hi];
+}
 
 /**
  * 判断命中是否**跨越了标点差异**。
  *
- * 做法：把页面片段与摘录各自按 `ignorePunctuation: false` 重新归一化再比较。
- * 不同 → 说明是「忽略标点」才匹配上的，即跨越了差异。
+ * 做法：两侧各自按 `ignorePunctuation: false` 重新归一化再比较 ——
+ * 页面侧是「span + 紧邻的边缘标点」（不跨块，见 `spanWithEdgePunctuation`），
+ * 摘录侧保持原样。不同 → 说明是「忽略标点」才匹配上的，即跨越了差异。
  *
  * @remarks
+ * 两侧**不对称**是刻意的：摘录的标点有没有、是什么，本身就是要比对的内容，
+ * 所以不能像页面侧那样补边缘；页面侧必须补，因为归一化把它的首尾标点
+ * 当可选分隔符删掉了（推演见 `spanWithEdgePunctuation` 的注释）。
+ *
  * **为什么不用「片段里是否有标点被折叠」**：那样只要开了选项就会全部标 true。
  * 真正需要区分的是「有没有跨过差异」—— 标点完全一致的摘录本就该 `exact` 命中，
  * 不该被送去人工复核。
@@ -413,11 +561,11 @@ function punctuationDiverges(
 ): boolean {
   if (!r.ignorePunctuation) return false;
   const strict = { ...toNormalizationOptions(r), ignorePunctuation: false };
-  // 两侧都要先削边缘：归一化把首/尾的标点当可选分隔符删掉了，页面的 span 因此
-  // 常常不含末尾句号，而摘要侧拿到的仍是原文。不一起削的话，「只差一个末尾句号」
-  // 会被误判成跨越标点差异（全半角这类宽度差异本就不算差异）。
-  const pageSide = trimEdges(normalizeWithMap(renderedSpanOf(view, start, end), strict).text);
-  const excerptSide = trimEdges(normalizeWithMap(excerptRendered, strict).text);
+  // 页面侧 = span + 紧邻的边缘标点（不跨块）；摘录侧 = 原样。两边都过 strict 归一化后比较。
+  // 全半角这类宽度差异本就不算差异 —— strict 归一化里的 ignoreWidth 负责折掉它们。
+  const rawSpan = spanWithEdgePunctuation(view, start, end);
+  const pageSide = normalizeWithMap(rawSpan, strict).text;
+  const excerptSide = normalizeWithMap(excerptRendered, strict).text;
   return pageSide !== excerptSide;
 }
 

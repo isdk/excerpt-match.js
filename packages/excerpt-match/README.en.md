@@ -184,6 +184,32 @@ If mdast cannot be installed, the dependency-free `regexFlattener` works, but ta
 nesting and escapes are handled imprecisely and coordinates are approximate —
 not the recommended path.
 
+### What is a "block"?
+
+A "block" here means a **Markdown block-level element** (mdast's `paragraph` /
+`heading` / `code` / `table`) — stricter than "paragraphs separated by Enter":
+
+| Source | Block boundary |
+|---|---|
+| Paragraphs: an **empty line** between two lines of text | the empty line is the boundary |
+| A single Enter inside a paragraph (soft break) | **not** a boundary — renders as the same paragraph |
+| `## Heading` | a heading is its own block, no empty line needed |
+| Code fence / table | each is its own block |
+
+"Block" and "paragraph" coincide most of the time, but headings, code blocks,
+tables, and list items each occupy a block too — and **containers** like quotes
+and lists nest, with inner paragraphs still being independent blocks.
+
+After flattening, a separator `\n` (a typographic artifact, not content) is
+inserted between blocks, and each block's bounds are recorded (`blocks`). The
+concept drives three behaviors:
+
+1. **Block boundaries stop normalization** — leading/trailing punctuation and
+   whitespace may fold within a block, but never merge across blocks;
+2. **Cross-block adjacency is computed in blocks** — see the next section;
+3. **`punctFolded`'s edge-punctuation expansion never crosses a block** — see the
+   stop rules in the [`punctFolded`](#punctfolded-separating-strict-hit-from-hit-only-by-ignoring-punctuation) section.
+
 ## Cross-block excerpts
 
 Users copying across paragraphs often **lose the line break**:
@@ -192,6 +218,11 @@ Users copying across paragraphs often **lose the line break**:
 md   : 第一段末尾内容。\n\n第二段开头内容。
 copy : 第一段末尾内容。第二段开头内容。
 ```
+
+The general case: excerpts spanning a heading, a paragraph, a code block, list
+items — anything that **looks continuous in the rendered page but is separated
+by block boundaries in the source** (see "What is a block?" above). Copying
+starts from the rendered page, which has no notion of blocks.
 
 Block separators are a typographic artifact we insert, not content. So in addition to
 the strict view, a **separator-free view** is derived, and both participate in matching.
@@ -687,11 +718,33 @@ distinguish:
 are handled by `ignoreWidth`, i.e. ordinary T1 normalization, and need no review
 (`本院认为,被告…` ↔ `本院认为，被告…` is `false`).
 
-It is decided by re-normalizing both the matched span and the excerpt with
-`ignorePunctuation: false` and comparing; a difference means the match only worked
-because punctuation was ignored. In markdown mode the comparison uses the
-**flattened** text, so syntax markers like `**` and `[](url)` never count as a
-difference.
+It is decided by re-normalizing both sides with `ignorePunctuation: false` and
+comparing — the page side is "the matched span **plus the punctuation/whitespace
+immediately adjacent to each edge**", while the excerpt side is kept as-is. A
+difference means the match only worked because punctuation was ignored. In
+markdown mode the comparison uses the **flattened** text, so syntax markers like
+`**` and `[](url)` never count as a difference.
+
+The two sides are **deliberately asymmetric**:
+
+- **The page side gets its edge punctuation back.** Normalization drops leading /
+  trailing punctuation as optional separators, so the matched span often lacks its
+  final full stop. Without adding it back, "both sides actually have the period"
+  would be reported as a difference, while a **real** difference sitting on the
+  edge (page has a colon, the excerpt a full stop) would be missed — adding it
+  back fixes both: what's there is there, and what it is, is what it is.
+- **The excerpt side stays as-is.** Whether its punctuation exists, and what it
+  is, is exactly what's being compared — nothing may be added for it.
+
+Two stop rules, both rooted in "block boundary":
+
+- **Stop at line breaks** (strict view): a line break is a block boundary; content
+  of the next paragraph does not belong to this hit.
+- **Stop at block edges** (the separator-free cross-block view): with block
+  separators stripped, adjacent blocks sit flush against each other, so the line
+  break rule alone cannot stop the expansion — it is clamped back to the hit
+  blocks, never mistaking the next block's leading punctuation for the hit's own
+  closing punctuation.
 
 `exact` is always `false` (literally identical, so no difference can be crossed).
 
@@ -947,6 +1000,7 @@ for (const it of items) it.ok = (await v.check(it.excerpt)).found;
 
 - **Async**: a retriever may return a Promise, so anything using T4 is async (T0–T3 are sync).
 - `minScore` (defaults to `minFallbackScore`, i.e. 0.75) constrains only T3/T4 — T0–T2 are always 1.
+  Raise it explicitly (e.g. `0.9`) for citation checking / forensics; keep the default for dedup / recall.
 - A miss logs `console.warn` by default; override with `onMiss`.
 - Want raw metadata instead? Use `locateExcerptFromPage`, which returns the full `ExcerptMatch`.
 

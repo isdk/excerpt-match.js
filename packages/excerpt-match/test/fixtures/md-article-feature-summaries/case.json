@@ -37,7 +37,7 @@
       }
     },
     {
-      "name": "flushSync：正文收尾是冒号，须忽略标点才命中；span 落在 flushSync（冒号已被折叠且属末尾，不入 span）",
+      "name": "flushSync：正文收尾是冒号，须忽略标点才命中；冒号↔句号是真实差异 → punctFolded: true",
       "excerpt": "批处理是一个破坏性改动，如果你想退出批量更新，你可以使用 flushSync。",
       "options": { "ignorePunctuation": true },
       "expect": {
@@ -45,7 +45,7 @@
         "kind": "normalized",
         "score": 1,
         "line": 300,
-        "punctFolded": false,
+        "punctFolded": true,
         "span": { "$and": [{ "$contains": "批处理是一个`破坏性改动`" }, { "$contains": "flushSync" }] }
       }
     },
