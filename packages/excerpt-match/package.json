@@ -40,6 +40,7 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:browser": "vitest run --config vitest.browser.ts",
     "clean": "rm -rf dist",
     "publish": "pnpm run build && pnpm publish",
     "release": "pnpm run clean && pnpm run build && npx commit-and-tag-version -s --tag-prefix \"@isdk/excerpt-match/\"",
@@ -73,18 +74,20 @@
   },
   "devDependencies": {
     "@isdk/match-ex": "^0.1.2",
+    "@playwright/browser-chromium": "1.51.0",
     "@types/diff-match-patch": "^1.0.32",
     "@types/node": "^20.11.0",
+    "@vitest/browser": "1.6.1",
     "diff-match-patch": "^1.0.5",
+    "playwright": "1.51.0",
+    "playwright-core": "1.51.0",
     "tsup": "^8.0.0",
     "typescript": "^5.3.0",
     "vitest": "^1.2.0"
   },
   "packageManager": "pnpm@12.4.1",
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild"
-    ]
+  "engines": {
+    "node": ">=20.19.0"
   },
   "description": "Locate an excerpt within a markdown document and return exact source coordinates (index/length)",
   "publishConfig": {

@@ -45,8 +45,10 @@
  *
  * ## 为什么是异步
  *
- * T4 的召回器允许返回 Promise（embedding / 云 API）。统一异步让调用方式
- * 与配置解耦：无论开没开 T4，`await matchExcerpt(...)` 都是同一个写法。
+ * T4 的召回器允许返回 Promise（embedding / 云 API）；内置默认依赖（mdast、
+ * `diff-match-patch-es`、jieba…）也按需异步装配（见 `./defaults`）。
+ * 统一异步让调用方式与配置解耦：无论开没开 T4，`await matchExcerpt(...)`
+ * 都是同一个写法。
  *
  * @packageDocumentation
  */
@@ -154,29 +156,32 @@ interface ResolvedMatcherOptions {
  * @remarks
  * 装配原则：**显式传入永远赢**。`fallbacks` 与 `markdown` 需要区分
  * 「没传」与「显式传了空/取消」，所以逐项处理而不是一把 spread。
+ *
+ * 默认依赖的加载是异步的（见 `./defaults`），所以本函数也是 async ——
+ * 高层入口因此统一 `await`（见 `createExcerptMatcher`）。
  */
-function resolveMatcherOptions(o: ExcerptMatcherOptions): ResolvedMatcherOptions {
+async function resolveMatcherOptions(o: ExcerptMatcherOptions): Promise<ResolvedMatcherOptions> {
   const { retriever, aligner, minScore, onHit, onMiss, markdown, fallbacks, cjkNumeralParser, ignoreParticles, ...rest } = o;
 
   // md 摊平器：不传 → 内置默认（mdast + GFM）；显式 null → 纯文本模式
-  const md = markdown === undefined ? defaultMarkdownFlattener() : markdown || undefined;
+  const md = markdown === undefined ? await defaultMarkdownFlattener() : markdown || undefined;
 
   // T3 模糊层：不传且非 strict 档 → 内置 diff-match-patch-es。
   // strict 档的取舍是「宁可漏，不可错」，绝不自动注入模糊匹配。
   let fbs = fallbacks;
   if (fbs === undefined && o.preset !== 'strict') {
-    const fb = defaultFuzzyFallback();
+    const fb = await defaultFuzzyFallback();
     if (fb) fbs = [fb];
   }
 
   // 中文数词：开了 cjkNumerals 却没给解析器 → 内置 cjk-number
   let parser = cjkNumeralParser;
-  if (!parser && rest.cjkNumerals) parser = defaultCjkNumberParser();
+  if (!parser && rest.cjkNumerals) parser = await defaultCjkNumberParser();
 
   // 的/地/得：true（内置保守模式）在高层自动升级为 jieba 词性判定 —— 词性感知，保护表补不全的问题不复存在
   let particles = ignoreParticles;
   if (particles === true) {
-    const t = defaultParticleTagger();
+    const t = await defaultParticleTagger();
     if (t) particles = t;
   }
 
@@ -193,7 +198,7 @@ function resolveMatcherOptions(o: ExcerptMatcherOptions): ResolvedMatcherOptions
     markdown: md,
     retriever,
     // T4 段内对齐默认与 T3 同源：召回给了粗位置，确定性对齐给精确坐标
-    aligner: aligner ?? defaultFuzzyFallback(),
+    aligner: aligner ?? (await defaultFuzzyFallback()),
     minScore: minScoreOf(o),
     onHit,
     onMiss,
@@ -257,7 +262,7 @@ function toResult(text: string, r: ExcerptMatch, resolved: ResolvedMatcherOption
  *
  * @example 零配置：内置 md 摊平 + 默认模糊层
  * ```ts
- * const m = createExcerptMatcher(mdSource);
+ * const m = await createExcerptMatcher(mdSource);
  * for (const it of items) {
  *   const r = await m.match(it.excerpt);
  *   if (r.found) cite(r.source);   // 引用 md 源码片段
@@ -266,14 +271,15 @@ function toResult(text: string, r: ExcerptMatch, resolved: ResolvedMatcherOption
  *
  * @example 需要语义召回（T4）时才配置 retriever
  * ```ts
- * const m = createExcerptMatcher(mdSource, { retriever });
+ * const m = await createExcerptMatcher(mdSource, { retriever });
  * ```
  */
-export function createExcerptMatcher(
+export async function createExcerptMatcher(
   text: string,
   options: ExcerptMatcherOptions = {}
-): ExcerptMatcher {
-  const resolved = resolveMatcherOptions(options);
+): Promise<ExcerptMatcher> {
+  // 先装配默认依赖（可能涉及异步模块加载），再建索引 —— 选项必须一次配齐
+  const resolved = await resolveMatcherOptions(options);
   const index = createTextIndex(text, resolved.match);
 
   const match = async (excerpt: string): Promise<ExcerptMatchResult> => {
@@ -341,5 +347,5 @@ export async function matchExcerpt(
   text: string,
   options: ExcerptMatcherOptions = {}
 ): Promise<ExcerptMatchResult> {
-  return createExcerptMatcher(text, options).match(excerpt);
+  return (await createExcerptMatcher(text, options)).match(excerpt);
 }

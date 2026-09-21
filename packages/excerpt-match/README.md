@@ -96,6 +96,30 @@ if (r.kind !== 'none') {
 }
 ```
 
+### 运行环境
+
+- **Node** ≥ 20.19（`engines` 锁定）。CJS 产物对纯 ESM 依赖原样保留动态
+  `import()`，按标准 ESM 加载 —— 零配置默认在旧版 CJS 加载语义下也不会断。
+- **浏览器 / Deno / edge**：静态依赖图不含任何 `node:*`（真实 Chrome 的
+  打包测试钉住）；内置默认由打包器按**字面量**动态 `import()` 拆成按需
+  chunk，未走到的能力不产生加载成本。某默认依赖解析不到时按「无此默认」
+  降级（能力关闭），显式注入仍然可用。
+
+  **vite 用户注意**：jieba 的 web 构建在运行时用
+  `new URL('jieba_bg.wasm', import.meta.url)` 拉取 wasm，而 vite 的依赖
+  预打包（dev server / vitest browser 模式）会把模块重写进 `.vite/deps`，
+  相对路径随之 404 —— 需在 `vite.config.ts` 排除：
+
+  ```ts
+  export default defineConfig({
+    optimizeDeps: { exclude: ['@isdk/nlp-jieba'] },
+  });
+  ```
+
+  生产构建（`vite build`）对 `new URL(…, import.meta.url)` 资产形态是原生
+  处理的，无需此配置。未排除时 jieba 默认装配会静默降级
+  （的/地/得退回保守模式），其余能力不受影响。
+
 ## 返回契约
 
 命中与否都返回同一个形状，**从不返回 `null`**：
@@ -1035,10 +1059,25 @@ src/excerptMatcher.ts 高层入口：T0–T4 编排，结论 + 原文 + 元数�
 ## 开发
 
 ```bash
-npm test          # vitest run，300+ 项
-npm run typecheck # tsc --noEmit
-npm run build     # tsup，产出 ESM + CJS + .d.ts
+npm test              # vitest run，300+ 项（Node 档）
+npm run test:browser  # 真实 Chrome 中的打包测试（无浏览器时自动跳过）
+npm run typecheck     # tsc --noEmit
+npm run build         # tsup，产出 ESM + CJS + .d.ts
 ```
 
 测试覆盖：分层用例、坐标还原属性测试（随机切片往返验证）、
 跨块相邻性与首个匹配、转义 / 实体精确性、归一化幂等。
+
+浏览器打包测试（`src/browserPackaging.test.ts`）在**真实 Chrome** 里跑
+同一条零配置链路：md 摊平（mdast + GFM）、`diff-match-patch-es`、
+`cjk-number`、jieba（web 构建 wasm + 词典）内置默认加载成功、命中坐标
+可回切 —— 钉住两条不变量：
+静态依赖图不含 `node:*`（任何 Node 专用原语混进来，vite 都会外置该模块
+并在运行时炸掉，测试当场红）；动态 import 一律字面量说明符（变量形态
+在浏览器里是无法解析的裸说明符，这是打包测试真抓出过的 bug）。
+
+环境要求：`@vitest/browser` + `playwright`（已在本包 devDependencies），
+默认 `channel: 'chrome'` 复用本机 Chrome，没有时退回
+`@playwright/browser-chromium` 管理的引擎（postinstall 下载，
+根 `pnpm-workspace.yaml` 的 `allowBuilds` 已放行）；两者皆无时整组跳过，
+不影响 `npm test` 与根目录 workspace 的一次性全量运行。

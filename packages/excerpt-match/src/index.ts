@@ -76,11 +76,12 @@ export type {
 } from './excerptMatcher';
 
 /**
- * 内置默认依赖装配（Node 惰性加载，见 `./defaults` 的文件头说明）。
+ * 内置默认依赖装配（运行时无关的惰性动态 import，见 `./defaults` 的文件头说明）。
  *
  * @remarks
  * 高层入口已自动使用它们；导出出来是给需要「在默认之上做微调」的调用方
  * （例如给默认摊平器套一层缓存，或在默认模糊层之外再追加一个匹配器）。
+ * 均返回 Promise —— 失败时解析为 `undefined`（按「无此默认」降级），从不 reject。
  */
 export {
   defaultCjkNumberParser,

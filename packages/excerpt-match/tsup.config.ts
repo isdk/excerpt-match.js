@@ -24,8 +24,10 @@ export default defineConfig({
    * 对 readFileSync 无能为力，且只支持 esm 输出格式。
    *
    * `cjk-number` 与 `diff-match-patch-es` 是纯 ESM 包，也不该打进来：
-   * 由 defaults.ts 惰性 require（见其文件头说明），旧 Node 的 CJS 产物
-   * 加载不到时按「无此默认」降级，而不是让整个包崩溃。
+   * 由 defaults.ts 惰性动态 import（见其文件头说明），加载失败时按
+   * 「无此默认」降级，而不是让整个包崩溃。注意 esbuild 对 CJS 产物里的
+   * external 动态 `import()` 原样保留（不转 require），所以纯 ESM 依赖
+   * 在两种产物里都能走标准 ESM 加载。
    */
   external: [
     'diff-match-patch',

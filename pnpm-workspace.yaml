@@ -8,6 +8,8 @@ packages:
 #
 # pnpm 12 起用 allowBuilds（布尔值）替代 onlyBuiltDependencies（数组）。
 allowBuilds:
+  # @vitest/browser 的 chromium 引擎包:postinstall 下载浏览器二进制(浏览器打包测试用)
+  '@playwright/browser-chromium': true
   esbuild: true
 
 minimumReleaseAgeExclude:

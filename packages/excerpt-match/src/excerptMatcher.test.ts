@@ -172,7 +172,7 @@ describe('API 形状', () => {
   });
 
   it('createExcerptMatcher：一次建索引，多条复用', async () => {
-    const m = createExcerptMatcher(DOC, { markdown: md });
+    const m = await createExcerptMatcher(DOC, { markdown: md });
     const excerpts = [ex, 'React 18 通过在默认情况下执行批处理来实现了开箱即用的性能改进。'];
     for (const e of excerpts) {
       const r = await m.match(e);
@@ -182,10 +182,10 @@ describe('API 形状', () => {
   });
 
   it('不给召回器就不碰语义层 —— T4 仅在配置了 retriever 时发生', async () => {
-    const m = createExcerptMatcher(DOC, T4);
+    const m = await createExcerptMatcher(DOC, T4);
     const ex = 'useInsertionEffect 这个 Hooks 执行时机在 DOM 生成之后，useLayoutEffect 之前，它的工作原理大致和 useLayoutEffect 相同，只是此时无法访问 DOM 节点的引用，一般用于提前注入 <style> 脚本。';
     // 同一个入口：没配 retriever 的实例走不到语义层（关掉默认模糊层，聚焦 T4 有无）
-    const plain = createExcerptMatcher(DOC, { markdown: md, fallbacks: [] });
+    const plain = await createExcerptMatcher(DOC, { markdown: md, fallbacks: [] });
     expect((await plain.match(ex)).kind).toBe('none');
     expect((await m.match(ex)).kind).toBe('semantic');
   });
@@ -193,7 +193,7 @@ describe('API 形状', () => {
   it('onHit / onMiss 回调由 options 配置', async () => {
     const hits: string[] = [];
     const misses: string[] = [];
-    const m = createExcerptMatcher(DOC, {
+    const m = await createExcerptMatcher(DOC, {
       markdown: md,
       onHit: (e, r) => hits.push(`${e}:${r.kind}`),
       onMiss: (e) => misses.push(e),
@@ -207,7 +207,7 @@ describe('API 形状', () => {
   it('onHit 在 T4 语义命中时同样触发 —— 回调覆盖全部档位', async () => {
     const hits: Array<{ excerpt: string; kind: string; found: boolean }> = [];
     const misses: string[] = [];
-    const m = createExcerptMatcher(DOC, {
+    const m = await createExcerptMatcher(DOC, {
       ...T4,
       onHit: (e, r) => hits.push({ excerpt: e, kind: r.kind, found: r.found }),
       onMiss: (e) => misses.push(e),
@@ -231,7 +231,7 @@ describe('API 形状', () => {
 
   it('空摘录 / 空文本：返回未命中且触发 onMiss', async () => {
     const misses: string[] = [];
-    const m = createExcerptMatcher(DOC, { markdown: md, onMiss: (e) => misses.push(e) });
+    const m = await createExcerptMatcher(DOC, { markdown: md, onMiss: (e) => misses.push(e) });
     expect((await m.match('')).found).toBe(false);
     expect(misses).toHaveLength(1);
   });

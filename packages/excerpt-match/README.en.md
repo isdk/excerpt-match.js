@@ -104,6 +104,35 @@ if (r.kind !== 'none') {
 }
 ```
 
+### Runtimes
+
+- **Node** ≥ 20.19 (locked by `engines`). The CJS build keeps dynamic
+  `import()` for pure-ESM dependencies as-is (verified against esbuild),
+  so the zero-config defaults load via standard ESM in both builds.
+- **Browser / Deno / edge**: the static dependency graph contains no
+  `node:*` (pinned by a real-Chrome packaging test); the built-in defaults
+  are loaded through **literal** dynamic `import()` so bundlers split them
+  into on-demand chunks — capabilities never reached cost nothing. A
+  default that cannot be resolved degrades to "no default" (capability
+  off); explicit injection keeps working as before.
+
+  **Vite users**: jieba's web build fetches its wasm at runtime via
+  `new URL('jieba_bg.wasm', import.meta.url)`. Vite's dependency
+  pre-bundling (dev server / vitest browser mode) rewrites such modules
+  into `.vite/deps`, which breaks the relative URL (404) — exclude it in
+  `vite.config.ts`:
+
+  ```ts
+  export default defineConfig({
+    optimizeDeps: { exclude: ['@isdk/nlp-jieba'] },
+  });
+  ```
+
+  Production builds (`vite build`) handle `new URL(…, import.meta.url)`
+  assets natively and need no extra config. Without the exclusion the jieba
+  default silently degrades (的/地/得 falls back to the conservative mode);
+  all other capabilities are unaffected.
+
 ## Return contract
 
 Hit or miss, the shape is the same — it **never returns `null`**:
@@ -1115,11 +1144,29 @@ Only three things are written here; everything else delegates to existing librar
 ## Development
 
 ```bash
-npm test          # vitest run, 39 tests
-npm run typecheck # tsc --noEmit
-npm run build     # tsup, emits ESM + CJS + .d.ts
+npm test              # vitest run, 350+ tests (Node tier)
+npm run test:browser  # packaging tests in real Chrome (skipped when absent)
+npm run typecheck     # tsc --noEmit
+npm run build         # tsup, emits ESM + CJS + .d.ts
 ```
 
 Coverage includes: per-tier cases, coordinate round-trip property tests (random slices),
 cross-block adjacency and first-match ordering, escape/entity exactness,
 and normalization idempotence.
+
+The browser packaging test (`src/browserPackaging.test.ts`) runs the same
+zero-config pipeline inside **real Chrome**: the md flattener (mdast + GFM),
+`diff-match-patch-es`, `cjk-number` and jieba (web wasm build + dictionary)
+defaults must load, and hits must map back to source coordinates. It pins
+two invariants: the static dependency graph contains no `node:*` (any
+Node-only primitive sneaking in gets externalized by vite and blows up at
+runtime — the test goes red on the spot), and dynamic imports use literal
+specifiers only (a variable-form `import(id)` is an unresolvable bare
+specifier in the browser — a real bug this test caught).
+
+Requirements: `@vitest/browser` + `playwright` (already in devDependencies).
+It prefers your local Chrome via `channel: 'chrome'`, falling back to the
+engine managed by `@playwright/browser-chromium` (downloaded on postinstall;
+allowed via `allowBuilds` in the root `pnpm-workspace.yaml`). With neither
+present the whole suite is skipped — `npm test` and the root workspace run
+are unaffected.

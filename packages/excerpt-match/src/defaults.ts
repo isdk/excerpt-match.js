@@ -11,29 +11,29 @@
  * | 中文数词 | `createCjkNumberParser`（@isdk/normalize-text） | `cjk-number` |
  * | 的/地/得 | `createJiebaParticleTagger`（@isdk/zh-particles） | `@isdk/nlp-jieba` |
  *
- * ## 为什么是惰性 require 而不是静态 import
+ * ## 为什么是惰性动态 import 而不是静态 import
  *
- * - `cjk-number` 与 `diff-match-patch-es` 是**纯 ESM** 包：CJS 产物在旧 Node
- *   （< 20.19 / < 22.12，无 require(esm)）上根本加载不到它们；
- * - `@isdk/nlp-jieba` 在模块加载时就要 `fs.readFileSync` 读 wasm；
- * - mdast 解析器只该在真的要摊平时才初始化。
- *
- * 惰性 + 记忆化让「用不到就不付成本」；某个默认加载失败时按「无此默认」
- * 降级（对应能力关闭，返回 `undefined`），而不是让整个包在加载期崩溃 ——
- * 调用方仍然可以显式注入自己的实现。
+ * - **运行时无关**：本文件不 `import` 任何 `node:*` 模块，浏览器 / Deno / edge
+ *   走同一条代码路径；某个默认加载失败时按「无此默认」降级（对应能力关闭，
+ *   返回 `undefined`），而不是让整个包在加载期崩溃；
+ * - `cjk-number` 与 `diff-match-patch-es` 是**纯 ESM** 包：若被静态 import，
+ *   CJS 产物会把它们编成顶层 `require` —— 前者 exports 映射只有 `import` 条件，
+ *   任何 Node 版本都报 `ERR_PACKAGE_PATH_NOT_EXPORTED`；
+ * - 惰性 + 记忆化让「用不到就不付成本」：jieba 的 wasm + 词典、mdast 初始化
+ *   只由真正用到高层入口相应能力的调用方支付；
+ * - **打包友好**：动态 `import()` 让 vite/webpack 等把重依赖拆成按需 chunk，
+ *   未走到的默认不产生加载成本。
  *
  * ## 边界
  *
- * 默认装配面向 **Node**。浏览器等无 Node 模块系统的环境拿不到这些默认，
- * 请显式传入 `markdown` / `fallbacks` 等选项（与旧版用法一致）。
+ * 默认装配**运行时无关**：只依赖 ECMAScript 动态 `import()` 与字面量模块名，
+ * 不 `import` 任何 `node:*` 模块 —— 浏览器 / Deno / edge 走同一条代码路径。
+ * 依赖由打包器按字面量静态拆块，环境里解析不到时（无 node_modules 或
+ * 未配置别名）自然降级为「无此默认」—— 调用方仍可显式传入
+ * `markdown` / `fallbacks` 等选项（与旧版用法一致）。
  *
  * @packageDocumentation
  */
-
-import { createRequire } from 'node:module';
-import { existsSync, readFileSync } from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import { createMdastFlattener } from '@isdk/md-flatten';
 import { createCjkNumberParser } from '@isdk/normalize-text';
@@ -46,96 +46,41 @@ import { createDmpEsFallback } from './fuzzyMatch';
 import type { FallbackMatcher, MarkdownFlattener } from './types';
 
 /**
- * 基于本包安装位置的 require。
+ * 惰性 + 记忆化的动态 import；失败记住 `undefined`，不反复重试。
  *
  * @remarks
- * `import.meta.url` 在两种产物里都指向自身文件（esbuild 会把 CJS 里的
- * `import.meta.url` 换成本文件路径），Node 解析从包的 node_modules 开始，
- * 与包管理器的依赖可见性一致。
+ * 并发安全：缓存的是 Promise 本身，同 id 的并发调用共享同一次加载。
+ *
+ * **每个依赖必须是字面量说明符**（`import('cjk-number')`，且不能经由参数
+ * 间接传入）：打包器（vite / webpack / rolldown）只能静态分析字面量，
+ * 才能把纯 ESM 依赖拆成按需 chunk —— 浏览器里动态 import 才真正可用，
+ * 未走到的默认不产生加载成本。变量形态的 `import(id)` 在浏览器里是
+ * 无法解析的裸说明符（已用打包测试钉住）。Node 侧（CJS 产物）esbuild
+ * 对 external 的动态 import 原样保留，同样走标准 ESM 加载。
+ *
+ * 所有默认依赖都以**命名导出**可用（mdast 三件套、`diff-match-patch-es`、
+ * `cjk-number` 本就是 ESM 命名导出；`@isdk/nlp-jieba` 的 nodejs 构建被
+ * `import()` 后命名导出与 `default` 并存），因此直接按命名导出使用。
  */
-const nodeRequire = createRequire(import.meta.url);
-
-/**
- * 加载一个默认依赖模块。
- *
- * @remarks
- * 两段式，覆盖两种 exports 形态：
- *
- * 1. **普通 require** —— 双格式包（mdast 三件套、jieba）与字符串型 exports 的
- *    纯 ESM 包（`diff-match-patch-es`，Node ≥ 20.19 的 require(esm) 可加载）一次成功；
- * 2. **手动解析回退** —— `cjk-number` 这类 exports 映射里**只有 `import` 条件**的包，
- *    `require()` 必报 `ERR_PACKAGE_PATH_NOT_EXPORTED`。从本文件位置向上找到
- *    `node_modules/<id>/package.json`，取其 `import` 条件的入口文件，
- *    按**绝对路径** require —— 绕过 exports 映射，Node ≥ 20.19 照样能把 ESM
- *    文件 require 进来。
- *
- * 失败一律返回 `undefined` 并记住（见 {@link requireOptional}），按「无此默认」降级。
- */
-function requireDefault(id: string): unknown | undefined {
-  try {
-    return nodeRequire(id);
-  } catch {
-    // fall through：exports 映射没有 require 条件的纯 ESM 包
+const cache = new Map<string, Promise<unknown>>();
+function memo(id: string, load: () => Promise<unknown>): Promise<unknown> {
+  let p = cache.get(id);
+  if (!p) {
+    p = load().catch(() => undefined);
+    cache.set(id, p);
   }
-  try {
-    return nodeRequire(entryOf(id));
-  } catch {
-    return undefined; // 旧 Node 的 CJS 产物 / 无 Node 模块系统的环境
-  }
+  return p;
 }
 
-interface PkgJson {
-  exports?: Record<string, unknown>;
-  main?: string;
-}
+// 每个依赖一个字面量加载点（打包器只认字面量），memo 统一记忆化 + 失败降级
+const loadFromMarkdown = () => memo('mdast-util-from-markdown', () => import('mdast-util-from-markdown'));
+const loadGfm = () => memo('micromark-extension-gfm', () => import('micromark-extension-gfm'));
+const loadGfmFromMarkdown = () => memo('mdast-util-gfm', () => import('mdast-util-gfm'));
+const loadDmpEs = () => memo('diff-match-patch-es', () => import('diff-match-patch-es'));
+const loadCjkNumber = () => memo('cjk-number', () => import('cjk-number'));
+const loadJieba = () => memo('@isdk/nlp-jieba', () => import('@isdk/nlp-jieba'));
 
-/** 从 exports 的「.」映射里挑一个可 require 的入口：node → require → import → default */
-function entryFromExports(exp: unknown): string | undefined {
-  if (typeof exp === 'string') return exp;
-  if (!exp || typeof exp !== 'object') return undefined;
-  const o = exp as Record<string, unknown>;
-  for (const key of ['node', 'require', 'import', 'default']) {
-    const cond = o[key] as { default?: string } | string | undefined;
-    const target = typeof cond === 'string' ? cond : cond?.default;
-    if (target) return target;
-  }
-  return undefined;
-}
-
-/**
- * 手动解析包的真实入口文件。
- *
- * @remarks
- * 不能用 `import.meta.resolve`：vite-node（vitest）不提供它，CJS 产物里也被
- * esbuild 换成了没有 `resolve` 的垫片。node_modules 上溯 + 读 package.json
- * 在三种环境（vitest 源码、ESM 产物、CJS 产物）下行为一致。
- */
-function entryOf(id: string): string {
-  const segs = id.split('/');
-  let dir = path.dirname(fileURLToPath(import.meta.url));
-  for (;;) {
-    const pkgDir = path.join(dir, 'node_modules', ...segs);
-    const pkgJson = path.join(pkgDir, 'package.json');
-    if (existsSync(pkgJson)) {
-      const pkg = JSON.parse(readFileSync(pkgJson, 'utf8')) as PkgJson;
-      const entry = entryFromExports(pkg.exports?.['.']) ?? pkg.main;
-      if (!entry) throw new Error(`no entry for ${id}`);
-      return path.join(pkgDir, entry);
-    }
-    const parent = path.dirname(dir);
-    if (parent === dir) throw new Error(`module not found: ${id}`);
-    dir = parent;
-  }
-}
-
-/** 惰性 + 记忆化的模块加载；失败记住 `undefined`，不反复重试 */
-const cache = new Map<string, unknown>();
-function requireOptional<T>(id: string): T | undefined {
-  if (!cache.has(id)) cache.set(id, requireDefault(id));
-  return cache.get(id) as T | undefined;
-}
-
-let flattener: MarkdownFlattener | null | undefined;
+let flattener: Promise<MarkdownFlattener | null> | undefined;
 
 /**
  * 内置默认 md 摊平器（mdast + GFM），进程内只装配一次。
@@ -146,21 +91,23 @@ let flattener: MarkdownFlattener | null | undefined;
  * GFM（表格 / 删除线 / 任务列表 / 自动链接）与 CommonMark 一并支持 ——
  * 摘录最常见的出处就是这两种语法写成的文档。
  */
-export function defaultMarkdownFlattener(): MarkdownFlattener | undefined {
+export function defaultMarkdownFlattener(): Promise<MarkdownFlattener | undefined> {
   flattener ??= buildMarkdownFlattener();
-  return flattener ?? undefined;
+  return flattener.then((v) => v ?? undefined);
 }
 
-function buildMarkdownFlattener(): MarkdownFlattener | null {
-  const fromMarkdownMod =
-    requireOptional<typeof import('mdast-util-from-markdown')>('mdast-util-from-markdown');
-  const gfmMod = requireOptional<typeof import('micromark-extension-gfm')>('micromark-extension-gfm');
-  const gfmFromMarkdownMod = requireOptional<typeof import('mdast-util-gfm')>('mdast-util-gfm');
+async function buildMarkdownFlattener(): Promise<MarkdownFlattener | null> {
+  const [fromMarkdownMod, gfmMod, gfmFromMarkdownMod] = await Promise.all([
+    loadFromMarkdown() as Promise<typeof import('mdast-util-from-markdown') | undefined>,
+    loadGfm() as Promise<typeof import('micromark-extension-gfm') | undefined>,
+    loadGfmFromMarkdown() as Promise<typeof import('mdast-util-gfm') | undefined>,
+  ]);
   if (!fromMarkdownMod || !gfmMod || !gfmFromMarkdownMod) return null;
   try {
     return createMdastFlattener(
       // 适配签名：mdast 的 options 类型与本包的 `FromMarkdown` 结构别名不完全一致
-      (src, options) => fromMarkdownMod.fromMarkdown(src, options as Parameters<typeof fromMarkdownMod.fromMarkdown>[1]),
+      (src, options) =>
+        fromMarkdownMod.fromMarkdown(src, options as Parameters<typeof fromMarkdownMod.fromMarkdown>[1]),
       {
         extensions: [gfmMod.gfm()],
         mdastExtensions: [gfmFromMarkdownMod.gfmFromMarkdown()],
@@ -171,7 +118,7 @@ function buildMarkdownFlattener(): MarkdownFlattener | null {
   }
 }
 
-let fuzzy: FallbackMatcher | null | undefined;
+let fuzzy: Promise<FallbackMatcher | null> | undefined;
 
 /**
  * 内置默认 T3 模糊匹配器（`diff-match-patch-es`：Bitap 定位 + diff 精修）。
@@ -179,36 +126,36 @@ let fuzzy: FallbackMatcher | null | undefined;
  *
  * @returns 匹配器；`diff-match-patch-es` 加载失败时为 `undefined`
  */
-export function defaultFuzzyFallback(): FallbackMatcher | undefined {
+export function defaultFuzzyFallback(): Promise<FallbackMatcher | undefined> {
   fuzzy ??= buildFuzzyFallback();
-  return fuzzy ?? undefined;
+  return fuzzy.then((v) => v ?? undefined);
 }
 
-function buildFuzzyFallback(): FallbackMatcher | null {
-  const dmpEs = requireOptional<DmpEsLike>('diff-match-patch-es');
+async function buildFuzzyFallback(): Promise<FallbackMatcher | null> {
+  const dmpEs = await loadDmpEs() as DmpEsLike | undefined;
   if (!dmpEs || typeof dmpEs.match !== 'function' || typeof dmpEs.diff !== 'function') return null;
   return createDmpEsFallback(dmpEs);
 }
 
-let cjkParser: ChineseNumeralParser | null | undefined;
+let cjkParser: Promise<ChineseNumeralParser | null> | undefined;
 
 /**
  * 内置默认中文数词解析器（`cjk-number`：一千 ≡ 1000，含大写 / 口语 / 年份）。
  *
  * @returns 解析器；`cjk-number` 加载失败时为 `undefined`
  */
-export function defaultCjkNumberParser(): ChineseNumeralParser | undefined {
+export function defaultCjkNumberParser(): Promise<ChineseNumeralParser | undefined> {
   cjkParser ??= buildCjkNumberParser();
-  return cjkParser ?? undefined;
+  return cjkParser.then((v) => v ?? undefined);
 }
 
-function buildCjkNumberParser(): ChineseNumeralParser | null {
-  const cjk = requireOptional<CjkNumberLike>('cjk-number');
+async function buildCjkNumberParser(): Promise<ChineseNumeralParser | null> {
+  const cjk = await loadCjkNumber() as CjkNumberLike | undefined;
   if (!cjk || typeof cjk.number?.parse !== 'function') return null;
   return createCjkNumberParser(cjk);
 }
 
-let tagger: ParticleTagger | null | undefined;
+let tagger: Promise<ParticleTagger | null> | undefined;
 
 /**
  * 内置默认「的 / 地 / 得」判定器（`@isdk/nlp-jieba`，词典驱动，词性感知）。
@@ -216,16 +163,34 @@ let tagger: ParticleTagger | null | undefined;
  * @returns 判定器；jieba 加载失败时为 `undefined`
  *
  * @remarks
- * jieba 的 WASM 与词典只在首次真正折叠时才加载（见
- * `createJiebaParticleTagger` 的惰性 `addDefaultDict`）。
+ * jieba 的词典只在首次真正折叠时才加载（见
+ * `createJiebaParticleTagger` 的惰性 `addDefaultDict`）；浏览器侧 web 构建
+ * 的 wasm 初始化在装配时完成（见 {@link buildParticleTagger}）。
  */
-export function defaultParticleTagger(): ParticleTagger | undefined {
+export function defaultParticleTagger(): Promise<ParticleTagger | undefined> {
   tagger ??= buildParticleTagger();
-  return tagger ?? undefined;
+  return tagger.then((v) => v ?? undefined);
 }
 
-function buildParticleTagger(): ParticleTagger | null {
-  const jieba = requireOptional<JiebaLike>('@isdk/nlp-jieba');
+/**
+ * web 构建（浏览器）的 `default` 是 wasm 初始化函数：必须先 await 它才有
+ * `wasm` 实例（词典直接编译在 wasm 内，无需 fs）；nodejs 构建在模块加载时
+ * 已同步初始化，`default` 是模块对象本身而非函数。返回 undefined = 无需初始化。
+ */
+function wasmInitOf(mod: object): (() => Promise<unknown>) | undefined {
+  const d = (mod as { default?: unknown }).default;
+  return typeof d === 'function' ? (d as () => Promise<unknown>) : undefined;
+}
+
+async function buildParticleTagger(): Promise<ParticleTagger | null> {
+  const jieba = await loadJieba() as JiebaLike | undefined;
   if (!jieba || typeof jieba.addDefaultDict !== 'function' || typeof jieba.tag !== 'function') return null;
+  // 浏览器侧先完成 wasm 初始化（幂等，nodejs 构建此处为 undefined）。
+  // 初始化失败 = wasm 拿不到，按「无此默认」降级而不是让首次折叠崩溃。
+  try {
+    await wasmInitOf(jieba)?.();
+  } catch {
+    return null;
+  }
   return createJiebaParticleTagger(jieba);
 }
