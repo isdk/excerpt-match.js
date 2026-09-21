@@ -42,7 +42,6 @@
     "test:watch": "vitest",
     "test:browser": "vitest run --config vitest.browser.ts",
     "clean": "rm -rf dist",
-    "publish": "pnpm run build && pnpm publish",
     "release": "pnpm run clean && pnpm run build && npx commit-and-tag-version -s --tag-prefix \"@isdk/excerpt-match/\"",
     "build": "tsup",
     "typecheck": "tsc --noEmit"
