@@ -42,7 +42,7 @@
     "test:watch": "vitest",
     "clean": "rm -rf dist",
     "publish": "pnpm run build && pnpm publish",
-    "release": "npx commit-and-tag-version -s --tag-prefix \"@isdk/normalize-text/\"",
+    "release": "pnpm run clean && pnpm run build && npx commit-and-tag-version -s --tag-prefix \"@isdk/normalize-text/\"",
     "build": "tsup",
     "typecheck": "tsc --noEmit"
   },

@@ -11,10 +11,8 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "build": "pnpm -r --filter \"./packages/*\" run build",
-    "build:packages": "pnpm -r --filter \"./packages/*\" run build",
     "clean": "pnpm -r --filter \"./packages/*\" run clean && rm -rf node_modules",
-    "release": "pnpm run release:packages && npx commit-and-tag-version -s",
-    "release:packages": "pnpm -r --filter \"./packages/*\" run clean && pnpm -r --filter \"./packages/*\" run build && pnpm -r --filter \"./packages/*\" --workspace-concurrency=1 run release",
+    "release": "pnpm -r --filter \"./packages/*\" --workspace-concurrency=1 run release",
     "publish": "pnpm -r --filter \"./packages/*\" --workspace-concurrency=1 run publish"
   },
   "devDependencies": {

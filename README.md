@@ -35,7 +35,7 @@ pnpm run build
 管理（`-s`：对 release 提交与 tag 做 GPG 签名）：
 
 ```bash
-# 全量：所有子包先 clean → build → release（按依赖拓扑序），最后处理根目录
+# 全量：所有子包按依赖拓扑序 clean → build → release
 pnpm release
 
 # 单发某一个包：只 bump 版本 / 生成 CHANGELOG / 打 tag
@@ -45,7 +45,7 @@ pnpm --filter @isdk/md-flatten release
 git tag -l "@isdk/md-flatten/*"
 ```
 
-- **Tag 前缀即包名**：子包 tag 形如 `@isdk/md-flatten/v1.0.1`，互不冲突；根目录为私有包，tag 用默认 `v` 前缀（如 `v1.0.1`）代表工作区整体版本，与子包 tag 也不冲突
+- **Tag 前缀即包名**：子包 tag 形如 `@isdk/md-flatten/v1.0.1`，互不冲突；根目录只是管理 monorepo 的私有包，不做版本记录（不 bump、无 CHANGELOG、不打 tag）
 - **串行提交**：子包 release 阶段以 `--workspace-concurrency=1` 执行，避免并发 `git commit` 撞 `.git/index.lock`
 - **幂等**：没有新提交的包自动跳过（不改版本、不打 tag），全量重跑安全
 
