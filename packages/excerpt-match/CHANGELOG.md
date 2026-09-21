@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [2.0.0](///compare/@isdk/excerpt-match/1.1.0...@isdk/excerpt-match/2.0.0) (2026-09-21)
+
+### ⚠ BREAKING CHANGES
+
+* **excerpt-match:** createExcerptMatcher 返回 Promise<ExcerptMatcher>；
+  default* 装配函数（defaultMarkdownFlattener / defaultFuzzyFallback /
+  defaultCjkNumberParser / defaultParticleTagger）返回 Promise
+
+### Features
+
+* **excerpt-match:** 默认装配纯 ESM 化，动态 import 替代 createRequire，新增浏览器打包测试 8bcbef1
+
 ## 1.1.0 (2026-09-21)
 
 ### Features
