@@ -1,6 +1,6 @@
 {
   "name": "@isdk/identifier-variants",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Identifier variant normalization: TensorFlow / tensor_flow / tensor-flow → one form",
   "license": "MIT",
   "keywords": [
