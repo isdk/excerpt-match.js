@@ -1,6 +1,6 @@
 {
   "name": "@isdk/zh-negation",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Word-boundary-aware Chinese negation detection: tells real negation words from content words like 未来/非常/无锡",
   "license": "MIT",
   "keywords": [
