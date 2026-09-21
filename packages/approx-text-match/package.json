@@ -1,8 +1,27 @@
 {
   "name": "@isdk/approx-text-match",
   "version": "0.1.0",
-  "description": "近似子串定位：在长文本里找出最相似的连续区间 + 相似度（模糊搜索库做不到的事）",
+  "description": "Approximate substring location: find the most similar contiguous span with a similarity score in long text",
   "license": "MIT",
+  "keywords": [
+    "fuzzy-matching",
+    "substring",
+    "approximate",
+    "levenshtein",
+    "bitap",
+    "text-search",
+    "similarity"
+  ],
+  "author": "Riceball LEE <snowyu.lee@gmail.com>",
+  "homepage": "https://github.com/isdk/excerpt-match.js/tree/main/packages/approx-text-match#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/isdk/excerpt-match.js.git",
+    "directory": "packages/approx-text-match"
+  },
+  "bugs": {
+    "url": "https://github.com/isdk/excerpt-match.js/issues"
+  },
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -22,6 +41,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "clean": "rm -rf dist",
+    "publish": "pnpm run build && pnpm publish",
     "release": "npx commit-and-tag-version -s --tag-prefix \"@isdk/approx-text-match/\"",
     "build": "tsup",
     "typecheck": "tsc --noEmit"
@@ -44,6 +64,7 @@
     "vitest": "^1.2.0"
   },
   "publishConfig": {
+    "access": "public",
     "main": "./dist/index.cjs",
     "module": "./dist/index.js",
     "types": "./dist/index.d.ts",

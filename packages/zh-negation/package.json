@@ -1,8 +1,27 @@
 {
   "name": "@isdk/zh-negation",
   "version": "0.1.0",
-  "description": "中文否定检测（词边界感知）：区分「未来/非常/无锡」等实词与真正的否定词",
+  "description": "Word-boundary-aware Chinese negation detection: tells real negation words from content words like 未来/非常/无锡",
   "license": "MIT",
+  "keywords": [
+    "chinese",
+    "negation",
+    "否定",
+    "nlp",
+    "word-segmentation",
+    "tokenizer",
+    "sentiment"
+  ],
+  "author": "Riceball LEE <snowyu.lee@gmail.com>",
+  "homepage": "https://github.com/isdk/excerpt-match.js/tree/main/packages/zh-negation#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/isdk/excerpt-match.js.git",
+    "directory": "packages/zh-negation"
+  },
+  "bugs": {
+    "url": "https://github.com/isdk/excerpt-match.js/issues"
+  },
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -22,6 +41,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "clean": "rm -rf dist",
+    "publish": "pnpm run build && pnpm publish",
     "release": "npx commit-and-tag-version -s --tag-prefix \"@isdk/zh-negation/\"",
     "build": "tsup",
     "typecheck": "tsc --noEmit"
@@ -32,6 +52,7 @@
     "vitest": "^1.2.0"
   },
   "publishConfig": {
+    "access": "public",
     "main": "./dist/index.cjs",
     "module": "./dist/index.js",
     "types": "./dist/index.d.ts",

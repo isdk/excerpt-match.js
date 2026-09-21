@@ -1,8 +1,27 @@
 {
   "name": "@isdk/normalize-text",
   "version": "0.1.0",
-  "description": "归一化文本并保留原文坐标映射——搜索高亮、引用定位、文本 diff 都需要",
+  "description": "Normalize text while keeping a coordinate map back to the source — for search highlighting, citation locating, and text diff",
   "license": "MIT",
+  "keywords": [
+    "normalize",
+    "unicode",
+    "nfc",
+    "index-mapping",
+    "coordinates",
+    "text-processing",
+    "chinese"
+  ],
+  "author": "Riceball LEE <snowyu.lee@gmail.com>",
+  "homepage": "https://github.com/isdk/excerpt-match.js/tree/main/packages/normalize-text#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/isdk/excerpt-match.js.git",
+    "directory": "packages/normalize-text"
+  },
+  "bugs": {
+    "url": "https://github.com/isdk/excerpt-match.js/issues"
+  },
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -22,6 +41,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "clean": "rm -rf dist",
+    "publish": "pnpm run build && pnpm publish",
     "release": "npx commit-and-tag-version -s --tag-prefix \"@isdk/normalize-text/\"",
     "build": "tsup",
     "typecheck": "tsc --noEmit"
@@ -47,6 +67,7 @@
     "vitest": "^1.2.0"
   },
   "publishConfig": {
+    "access": "public",
     "main": "./dist/index.cjs",
     "module": "./dist/index.js",
     "types": "./dist/index.d.ts",

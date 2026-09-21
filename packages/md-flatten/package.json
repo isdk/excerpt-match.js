@@ -1,8 +1,27 @@
 {
   "name": "@isdk/md-flatten",
   "version": "0.1.0",
-  "description": "markdown 源码 ↔ 渲染后文本的双向坐标映射：评论锚定、引用校验、文档 diff",
+  "description": "Bidirectional coordinate mapping between markdown source and rendered text: comment anchoring, citation checking, document diff",
   "license": "MIT",
+  "keywords": [
+    "markdown",
+    "source-map",
+    "coordinates",
+    "position-mapping",
+    "anchor",
+    "comments",
+    "diff"
+  ],
+  "author": "Riceball LEE <snowyu.lee@gmail.com>",
+  "homepage": "https://github.com/isdk/excerpt-match.js/tree/main/packages/md-flatten#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/isdk/excerpt-match.js.git",
+    "directory": "packages/md-flatten"
+  },
+  "bugs": {
+    "url": "https://github.com/isdk/excerpt-match.js/issues"
+  },
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -22,6 +41,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "clean": "rm -rf dist",
+    "publish": "pnpm run build && pnpm publish",
     "release": "npx commit-and-tag-version -s --tag-prefix \"@isdk/md-flatten/\"",
     "build": "tsup",
     "typecheck": "tsc --noEmit"
@@ -55,6 +75,7 @@
     "micromark-extension-gfm": "^3.0.0"
   },
   "publishConfig": {
+    "access": "public",
     "main": "./dist/index.cjs",
     "module": "./dist/index.js",
     "types": "./dist/index.d.ts",

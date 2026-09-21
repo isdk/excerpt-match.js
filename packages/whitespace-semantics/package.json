@@ -1,8 +1,27 @@
 {
   "name": "@isdk/whitespace-semantics",
   "version": "0.1.0",
-  "description": "空白语义：判断两字符间的空白是排版产物，还是承载词义/句边界的内容",
+  "description": "Whitespace semantics: whether the space between two characters is typography or meaning-bearing content (word/sentence boundary)",
   "license": "MIT",
+  "keywords": [
+    "whitespace",
+    "space",
+    "sentence-boundary",
+    "tokenizer",
+    "cjk",
+    "typography",
+    "chinese"
+  ],
+  "author": "Riceball LEE <snowyu.lee@gmail.com>",
+  "homepage": "https://github.com/isdk/excerpt-match.js/tree/main/packages/whitespace-semantics#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/isdk/excerpt-match.js.git",
+    "directory": "packages/whitespace-semantics"
+  },
+  "bugs": {
+    "url": "https://github.com/isdk/excerpt-match.js/issues"
+  },
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -22,6 +41,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "clean": "rm -rf dist",
+    "publish": "pnpm run build && pnpm publish",
     "release": "npx commit-and-tag-version -s --tag-prefix \"@isdk/whitespace-semantics/\"",
     "build": "tsup",
     "typecheck": "tsc --noEmit"
@@ -32,6 +52,7 @@
     "vitest": "^1.2.0"
   },
   "publishConfig": {
+    "access": "public",
     "main": "./dist/index.cjs",
     "module": "./dist/index.js",
     "types": "./dist/index.d.ts",

@@ -1,8 +1,27 @@
 {
   "name": "@isdk/zh-particles",
   "version": "0.1.0",
-  "description": "中文结构助词「的/地/得」的词性感知判定：区分助词与实词（大地/得到/详细地址）",
+  "description": "Part-of-speech-aware detection of Chinese structural particles 的/地/得: tells particles from content words (大地/得到/详细地址)",
   "license": "MIT",
+  "keywords": [
+    "chinese",
+    "particles",
+    "助词",
+    "nlp",
+    "word-segmentation",
+    "grammar",
+    "jieba"
+  ],
+  "author": "Riceball LEE <snowyu.lee@gmail.com>",
+  "homepage": "https://github.com/isdk/excerpt-match.js/tree/main/packages/zh-particles#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/isdk/excerpt-match.js.git",
+    "directory": "packages/zh-particles"
+  },
+  "bugs": {
+    "url": "https://github.com/isdk/excerpt-match.js/issues"
+  },
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -22,6 +41,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "clean": "rm -rf dist",
+    "publish": "pnpm run build && pnpm publish",
     "release": "npx commit-and-tag-version -s --tag-prefix \"@isdk/zh-particles/\"",
     "build": "tsup",
     "typecheck": "tsc --noEmit"
@@ -33,6 +53,7 @@
     "@isdk/nlp-jieba": "^2.2.2"
   },
   "publishConfig": {
+    "access": "public",
     "main": "./dist/index.cjs",
     "module": "./dist/index.js",
     "types": "./dist/index.d.ts",

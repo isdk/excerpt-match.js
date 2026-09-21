@@ -2,6 +2,26 @@
   "name": "@isdk/excerpt-match",
   "version": "1.0.0",
   "license": "MIT",
+  "keywords": [
+    "excerpt",
+    "quote",
+    "citation",
+    "markdown",
+    "fuzzy-matching",
+    "locate",
+    "source-mapping",
+    "text-search"
+  ],
+  "author": "Riceball LEE <snowyu.lee@gmail.com>",
+  "homepage": "https://github.com/isdk/excerpt-match.js/tree/main/packages/excerpt-match#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/isdk/excerpt-match.js.git",
+    "directory": "packages/excerpt-match"
+  },
+  "bugs": {
+    "url": "https://github.com/isdk/excerpt-match.js/issues"
+  },
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -21,6 +41,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "clean": "rm -rf dist",
+    "publish": "pnpm run build && pnpm publish",
     "release": "npx commit-and-tag-version -s --tag-prefix \"@isdk/excerpt-match/\"",
     "build": "tsup",
     "typecheck": "tsc --noEmit"
@@ -65,8 +86,9 @@
       "esbuild"
     ]
   },
-  "description": "在 markdown 正文中定位摘录出处，返回精确的源码坐标（index/length）",
+  "description": "Locate an excerpt within a markdown document and return exact source coordinates (index/length)",
   "publishConfig": {
+    "access": "public",
     "main": "./dist/index.cjs",
     "module": "./dist/index.js",
     "types": "./dist/index.d.ts",

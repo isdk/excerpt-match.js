@@ -1,8 +1,27 @@
 {
   "name": "@isdk/identifier-variants",
   "version": "0.1.0",
-  "description": "标识符变体归一：TensorFlow / tensor_flow / tensor-flow → 同一形式",
+  "description": "Identifier variant normalization: TensorFlow / tensor_flow / tensor-flow → one form",
   "license": "MIT",
+  "keywords": [
+    "identifier",
+    "normalization",
+    "camelcase",
+    "snake-case",
+    "kebab-case",
+    "variants",
+    "tokenize"
+  ],
+  "author": "Riceball LEE <snowyu.lee@gmail.com>",
+  "homepage": "https://github.com/isdk/excerpt-match.js/tree/main/packages/identifier-variants#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/isdk/excerpt-match.js.git",
+    "directory": "packages/identifier-variants"
+  },
+  "bugs": {
+    "url": "https://github.com/isdk/excerpt-match.js/issues"
+  },
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -22,6 +41,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "clean": "rm -rf dist",
+    "publish": "pnpm run build && pnpm publish",
     "release": "npx commit-and-tag-version -s --tag-prefix \"@isdk/identifier-variants/\"",
     "build": "tsup",
     "typecheck": "tsc --noEmit"
@@ -32,6 +52,7 @@
     "vitest": "^1.2.0"
   },
   "publishConfig": {
+    "access": "public",
     "main": "./dist/index.cjs",
     "module": "./dist/index.js",
     "types": "./dist/index.d.ts",
