@@ -1,6 +1,6 @@
 {
   "name": "@isdk/semantic-locate",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Two-stage semantic locating: retrieve candidate segments externally, then align to exact character offsets within a segment",
   "license": "MIT",
   "keywords": [
