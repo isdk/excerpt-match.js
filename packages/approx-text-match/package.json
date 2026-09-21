@@ -1,6 +1,6 @@
 {
   "name": "@isdk/approx-text-match",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Approximate substring location: find the most similar contiguous span with a similarity score in long text",
   "license": "MIT",
   "keywords": [
