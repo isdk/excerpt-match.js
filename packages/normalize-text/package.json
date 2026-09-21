@@ -30,7 +30,7 @@
     "@isdk/zh-particles": "workspace:*"
   },
   "peerDependencies": {
-    "cjk-number": ">=0.2.0"
+    "cjk-number": ">=1.0.0"
   },
   "peerDependenciesMeta": {
     "cjk-number": {
