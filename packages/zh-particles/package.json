@@ -1,6 +1,6 @@
 {
   "name": "@isdk/zh-particles",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Part-of-speech-aware detection of Chinese structural particles 的/地/得: tells particles from content words (大地/得到/详细地址)",
   "license": "MIT",
   "keywords": [
