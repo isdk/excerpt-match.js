@@ -1,6 +1,6 @@
 {
   "name": "@isdk/md-flatten",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Bidirectional coordinate mapping between markdown source and rendered text: comment anchoring, citation checking, document diff",
   "license": "MIT",
   "keywords": [
