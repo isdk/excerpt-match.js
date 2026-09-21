@@ -21,6 +21,8 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
+    "clean": "rm -rf dist",
+    "release": "npx commit-and-tag-version -s --tag-prefix \"@isdk/zh-particles/\"",
     "build": "tsup",
     "typecheck": "tsc --noEmit"
   },

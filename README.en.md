@@ -28,6 +28,27 @@ You can also run one package: `pnpm --filter @isdk/zh-negation test`.
 dev** while `publishConfig` switches to `dist` on publish. So tests never
 depend on build output, and `tsconfig.json` has no `paths`.
 
+## Release
+
+Versioning and CHANGELOGs are managed by
+[commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version)
+(`-s` GPG-signs the release commit and tag):
+
+```bash
+# Release everything: all packages clean → build → release in dependency (topological) order, then the root
+pnpm release
+
+# Release a single package: bump version / generate CHANGELOG / tag only
+pnpm --filter @isdk/md-flatten release
+
+# List all release tags of one package
+git tag -l "@isdk/md-flatten/*"
+```
+
+- **Tag prefix is the package name**: package tags look like `@isdk/md-flatten/v1.0.1` so they never collide; the root is private and tags with the default `v` prefix (e.g. `v1.0.1`) as the workspace-wide version, which cannot collide with package tags either
+- **Serial commits**: package releases run with `--workspace-concurrency=1` so concurrent `git commit` calls don't race on `.git/index.lock`
+- **Idempotent**: packages without new commits are skipped entirely (no bump, no tag), so re-running the full release is safe
+
 ## Packages
 
 | package | role |
