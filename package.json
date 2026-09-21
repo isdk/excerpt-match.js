@@ -13,7 +13,7 @@
     "build": "pnpm -r --filter \"./packages/*\" run build",
     "clean": "pnpm -r --filter \"./packages/*\" run clean && rm -rf node_modules",
     "release": "pnpm -r --filter \"./packages/*\" --workspace-concurrency=1 run release",
-    "publish": "pnpm -r --filter \"./packages/*\" --workspace-concurrency=1 run publish"
+    "publish": "pnpm -r --filter \"./packages/*\" --workspace-concurrency=1 publish"
   },
   "devDependencies": {
     "@isdk/nlp-jieba": "^2.2.2",
