@@ -1,6 +1,6 @@
 {
   "name": "@isdk/whitespace-semantics",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Whitespace semantics: whether the space between two characters is typography or meaning-bearing content (word/sentence boundary)",
   "license": "MIT",
   "keywords": [
