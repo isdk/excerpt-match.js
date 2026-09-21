@@ -1,5 +1,7 @@
 # @isdk/whitespace-semantics
 
+English | [中文](./README.md)
+
 Whitespace semantics: is the space between two characters **typography, or
 meaning-bearing content?**
 

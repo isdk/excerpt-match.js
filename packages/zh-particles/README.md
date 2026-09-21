@@ -1,5 +1,7 @@
 # @isdk/zh-particles
 
+[English](./README.en.md) | 中文
+
 中文结构助词「的/地/得」判定：区分助词与实词
 
 ## 它解决什么

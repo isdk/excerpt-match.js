@@ -1,5 +1,7 @@
 # excerpt-match workspace
 
+English | [中文](./README.md)
+
 Locate an excerpt **inside a markdown document** and return exact source
 coordinates (`index` / `length`).
 

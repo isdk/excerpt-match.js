@@ -1,5 +1,7 @@
 # @isdk/identifier-variants
 
+[English](./README.en.md) | 中文
+
 标识符变体归一：TensorFlow ≡ tensor_flow ≡ tensor-flow
 
 ## 它解决什么

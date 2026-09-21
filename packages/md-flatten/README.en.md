@@ -1,5 +1,7 @@
 # @isdk/md-flatten
 
+English | [中文](./README.md)
+
 Bidirectional coordinate mapping between markdown source and rendered text
 
 ## What it solves

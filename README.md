@@ -1,5 +1,7 @@
 # excerpt-match workspace
 
+[English](./README.en.md) | 中文
+
 在 **markdown 正文中定位摘录出处**，返回精确的源码坐标（`index` / `length`）。
 
 本仓库是 **pnpm workspace 根目录**，本身**不发布**；真正的包都在 `packages/` 下。

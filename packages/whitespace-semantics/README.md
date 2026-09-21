@@ -1,5 +1,7 @@
 # @isdk/whitespace-semantics
 
+[English](./README.en.md) | 中文
+
 空白语义：判断两个字符之间的空白**是排版产物，还是承载意义的内容**。
 
 ## 它解决什么

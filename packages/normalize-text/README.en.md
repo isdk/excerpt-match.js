@@ -1,5 +1,7 @@
 # @isdk/normalize-text
 
+English | [中文](./README.md)
+
 Normalize while keeping source coordinates: highlighting, citation, diff
 
 ## What it solves

@@ -1,5 +1,7 @@
 # @isdk/approx-text-match
 
+English | [中文](./README.md)
+
 Approximate substring location: the most similar contiguous span + score
 
 ## What it solves

@@ -1,5 +1,7 @@
 # @isdk/normalize-text
 
+[English](./README.en.md) | 中文
+
 归一化并保留原文坐标映射：搜索高亮、引用定位、文本 diff 都需要
 
 ## 它解决什么

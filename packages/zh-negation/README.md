@@ -1,5 +1,7 @@
 # @isdk/zh-negation
 
+[English](./README.en.md) | 中文
+
 中文否定检测（词边界感知）：区分「未来/非常/无锡」与真否定词
 
 ## 它解决什么

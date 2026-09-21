@@ -1,5 +1,7 @@
 # @isdk/semantic-locate
 
+English | [中文](./README.md)
+
 Two-stage semantic locating: retrieve a segment, then align to exact offsets
 
 ## What it solves

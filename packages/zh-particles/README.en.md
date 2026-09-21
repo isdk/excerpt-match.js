@@ -1,5 +1,7 @@
 # @isdk/zh-particles
 
+English | [中文](./README.md)
+
 Chinese particles 的/地/得: tell a particle from part of a content word
 
 ## What it solves

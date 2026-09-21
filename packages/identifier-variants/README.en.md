@@ -1,5 +1,7 @@
 # @isdk/identifier-variants
 
+English | [中文](./README.md)
+
 Identifier variant normalization: TensorFlow ≡ tensor_flow ≡ tensor-flow
 
 ## What it solves

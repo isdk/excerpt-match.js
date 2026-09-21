@@ -1,5 +1,7 @@
 # @isdk/approx-text-match
 
+[English](./README.en.md) | 中文
+
 近似子串定位：在长文本里找出最相似的连续区间 + 相似度
 
 ## 它解决什么

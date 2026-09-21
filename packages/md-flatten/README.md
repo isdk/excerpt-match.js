@@ -1,5 +1,7 @@
 # @isdk/md-flatten
 
+[English](./README.en.md) | 中文
+
 markdown 源码 ↔ 渲染后文本的双向坐标映射
 
 ## 它解决什么

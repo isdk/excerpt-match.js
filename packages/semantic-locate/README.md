@@ -1,5 +1,7 @@
 # @isdk/semantic-locate
 
+[English](./README.en.md) | 中文
+
 两阶段语义定位：外部召回候选段 → 段内精确对齐到字符下标
 
 ## 它解决什么

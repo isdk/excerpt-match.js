@@ -1,5 +1,7 @@
 # @isdk/zh-negation
 
+English | [中文](./README.md)
+
 Chinese negation detection (word-boundary aware): 未来/非常/无锡 are not negations
 
 ## What it solves
