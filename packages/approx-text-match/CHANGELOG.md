@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.2.0](///compare/@isdk/approx-text-match/0.1.1...@isdk/approx-text-match/0.2.0) (2026-09-22)
+
+### ⚠ BREAKING CHANGES
+
+* **excerpt-match:** createExcerptMatcher 返回 Promise<ExcerptMatcher>；
+  default* 装配函数（defaultMarkdownFlattener / defaultFuzzyFallback /
+  defaultCjkNumberParser / defaultParticleTagger）返回 Promise
+
+### Features
+
+* **bitap:** 支持多命中，新增 maxMatches / minScore 0e47a49
+* **excerpt-match:** 集成测试支持 matcher 能力代号，新增毒化种子 fixture 3bf6ad2
+* **excerpt-match:** 默认装配纯 ESM 化，动态 import 替代 createRequire，新增浏览器打包测试 8bcbef1
+
+### Bug Fixes
+
+* **adapters:** 修正放宽重试抢跑与 dmp 实例状态泄漏 270b27d
+* **approx-text-match:** bitap 定位不到时放宽重试，pickSeed 跳过毒化种子 4ab6b0e
+
 ## 0.1.1 (2026-09-21)
 
 ### Features
