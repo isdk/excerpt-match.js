@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [2.1.0](///compare/@isdk/excerpt-match/2.0.0...@isdk/excerpt-match/2.1.0) (2026-09-22)
+
+### Features
+
+* **bitap:** 支持多命中，新增 maxMatches / minScore 0e47a49
+* **excerpt-match:** 集成测试支持 matcher 能力代号，新增毒化种子 fixture 3bf6ad2
+
+### Bug Fixes
+
+* **adapters:** 修正放宽重试抢跑与 dmp 实例状态泄漏 270b27d
+* **approx-text-match:** bitap 定位不到时放宽重试，pickSeed 跳过毒化种子 4ab6b0e
+
 ## [2.0.0](///compare/@isdk/excerpt-match/1.1.0...@isdk/excerpt-match/2.0.0) (2026-09-21)
 
 ### ⚠ BREAKING CHANGES
