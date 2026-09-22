@@ -16,7 +16,8 @@
 
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { pickSeed } from './bitap';
+import { createBitapFallback, pickSeed } from './bitap';
+import { lcsDiff, prefixMatch } from '../test/fakes';
 
 const CONTENT = '甲乙丙丁戊己庚辛壬癸';
 const NOISE = '*#$1';
@@ -135,6 +136,141 @@ describe('pickSeed 属性：毒化种子择优', () => {
         expect(b).toEqual(a);
       }),
       { numRuns: 200 }
+    );
+  });
+});
+
+// ────────────────────────────────────────────────────────────────
+// 多命中（maxMatches / minScore）的属性
+// ────────────────────────────────────────────────────────────────
+
+/**
+ * 分隔用的填充串。
+ *
+ * 长度必须 > `slack`(64)：否则窗口尾部的 slack 会够到**下一个** needle 的开头，
+ * diff 的"末个共同段"被延伸过去，跨度虚高、命中区间连成一片 ——
+ * 那就测不出遮蔽到底有没有生效了。
+ */
+const GAP = '。'.repeat(80);
+
+/** needle 在 doc 里精确重复 repeat 次，中间用 GAP 隔开 */
+const multiScenario = fc
+  .record({
+    chars: fc
+      .integer({ min: 8, max: 30 })
+      .chain((n) => fc.array(contentChar, { minLength: n, maxLength: n })),
+    repeat: fc.integer({ min: 1, max: 4 }),
+    maxMatches: fc.integer({ min: 1, max: 4 }),
+    minScore: fc.constantFrom(0, 0.3, 0.9),
+  })
+  .map(({ chars, repeat, maxMatches, minScore }) => {
+    const needle = chars.join('');
+    const parts: string[] = [];
+    for (let i = 0; i < repeat; i++) parts.push(GAP, needle);
+    parts.push(GAP);
+    return { doc: parts.join(''), needle, repeat, maxMatches, minScore };
+  });
+
+/** 在 needle 里注入噪声，让命中不再是精确匹配（更贴近真实） */
+const noisyMultiScenario = multiScenario.chain((base) =>
+  fc
+    .array(fc.tuple(fc.integer({ min: 0, max: 28 }), noiseChar), { minLength: 1, maxLength: 4 })
+    .map((noise) => {
+      let needle = base.needle;
+      for (const [pos, ch] of [...noise].sort((a, b) => a[0] - b[0])) {
+        const at = pos % (needle.length + 1);
+        needle = needle.slice(0, at) + ch + needle.slice(at);
+      }
+      return { ...base, needle };
+    })
+);
+
+describe('createBitapFallback 属性：多命中', () => {
+  it('★ 数量精确 = min(maxMatches, 实际出现次数) —— 遮蔽既不漏也不重', () => {
+    fc.assert(
+      fc.property(multiScenario, ({ doc, needle, repeat, maxMatches, minScore }) => {
+        const find = createBitapFallback(prefixMatch, lcsDiff, { maxMatches, minScore });
+        const r = find.find(needle, doc);
+        expect(r).not.toBeNull();
+        expect(r, '既不漏掉任何一处，也不重复计数').toHaveLength(Math.min(maxMatches, repeat));
+      }),
+      { numRuns: 150 }
+    );
+  });
+
+  it('★ 命中区间互不重叠', () => {
+    fc.assert(
+      fc.property(noisyMultiScenario, ({ doc, needle, maxMatches, minScore }) => {
+        const r = createBitapFallback(prefixMatch, lcsDiff, { maxMatches, minScore }).find(needle, doc);
+        if (!r) return;
+        const sorted = [...r].sort((a, b) => a.start - b.start);
+        for (let i = 1; i < sorted.length; i++) {
+          expect(sorted[i].start, '相邻命中不得重叠').toBeGreaterThanOrEqual(sorted[i - 1].end);
+        }
+      }),
+      { numRuns: 150 }
+    );
+  });
+
+  it('★ 数量不超过 maxMatches，且每一项都够 minScore', () => {
+    fc.assert(
+      fc.property(noisyMultiScenario, ({ doc, needle, maxMatches, minScore }) => {
+        const r = createBitapFallback(prefixMatch, lcsDiff, { maxMatches, minScore }).find(needle, doc);
+        if (!r) return;
+        expect(r.length).toBeLessThanOrEqual(maxMatches);
+        for (const m of r) {
+          expect(m.score).toBeGreaterThanOrEqual(minScore);
+          expect(m.score).toBeGreaterThan(0);
+          expect(m.end).toBeGreaterThan(m.start);
+          expect(m.start).toBeGreaterThanOrEqual(0);
+          expect(m.end).toBeLessThanOrEqual(doc.length);
+        }
+      }),
+      { numRuns: 150 }
+    );
+  });
+
+  it('★ 结果按分数降序：out[0] 恒为最佳命中', () => {
+    fc.assert(
+      fc.property(noisyMultiScenario, ({ doc, needle, maxMatches, minScore }) => {
+        const r = createBitapFallback(prefixMatch, lcsDiff, { maxMatches, minScore }).find(needle, doc);
+        if (!r) return;
+        for (let i = 1; i < r.length; i++) {
+          expect(r[i - 1].score).toBeGreaterThanOrEqual(r[i].score);
+        }
+      }),
+      { numRuns: 150 }
+    );
+  });
+
+  it('★ 多命中不影响单命中的结果 —— 第 1 个恒等于 maxMatches=1 的结果', () => {
+    fc.assert(
+      fc.property(noisyMultiScenario, ({ doc, needle, minScore }) => {
+        const one = createBitapFallback(prefixMatch, lcsDiff, { minScore }).find(needle, doc);
+        const many = createBitapFallback(prefixMatch, lcsDiff, { maxMatches: 4, minScore }).find(needle, doc);
+        if (!one || !many) {
+          expect(many ?? null).toEqual(one ?? null);
+          return;
+        }
+        // 兼容性核心：maxMatches 只会**追加**结果，绝不改变最佳命中
+        expect(many[0]).toEqual(one[0]);
+      }),
+      { numRuns: 150 }
+    );
+  });
+
+  it('★ 遮蔽哨兵不会泄漏进命中内容', () => {
+    fc.assert(
+      fc.property(noisyMultiScenario, ({ doc, needle, maxMatches, minScore }) => {
+        const r = createBitapFallback(prefixMatch, lcsDiff, { maxMatches, minScore }).find(needle, doc);
+        if (!r) return;
+        for (const m of r) {
+          const span = doc.slice(m.start, m.end);
+          expect(span.length).toBeGreaterThan(0);
+          expect(span, '命中内容必须来自原始 doc，不是被遮蔽的文本').not.toMatch(/[\u0000-\u0002\uE000]/);
+        }
+      }),
+      { numRuns: 150 }
     );
   });
 });
