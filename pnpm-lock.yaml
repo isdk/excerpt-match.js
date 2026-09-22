@@ -221,6 +221,9 @@ importers:
         specifier: '>=1.0.0'
         version: 2.0.1
     devDependencies:
+      fast-check:
+        specifier: ^4.10.0
+        version: 4.10.0
       tsup:
         specifier: ^8.0.0
         version: 8.5.1(postcss@8.5.28)(typescript@5.9.3)(yaml@2.9.1)
