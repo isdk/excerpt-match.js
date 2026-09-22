@@ -398,6 +398,14 @@ export interface MatchOptions {
 
   /**
    * 摘录本身是否也是 markdown（从 md 源码而非渲染后文档复制）。
+   *
+   * @remarks
+   * 摘录里的 md 标记（`**` 等）会被摊平掉，但「列表序号被压平成连写」
+   * （`1. **x**2. **y**`）这类结构损坏仍然会让 T0–T2 够不到 ——
+   * 文档侧的列表序号在摊平时已被丢弃。此时靠 T3 模糊层兜底：
+   * 所有种子窗口都含原文不存在的字符（毒化种子），适配层的放宽重试
+   * 能把它救回来，见 {@link MatchOptions.fallbacks}。
+   *
    * @defaultValue `false` —— 默认摘录来自渲染后文档
    */
   excerptIsMarkdown?: boolean;

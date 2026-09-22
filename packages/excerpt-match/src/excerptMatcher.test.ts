@@ -52,6 +52,60 @@ const dmp = createDmpFallback(new diff_match_patch());
 const T4 = { markdown: md, retriever: lexicalRetriever, aligner: dmp, fallbacks: [] } as const;
 
 describe('matchExcerpt：真实长文（React 18 新特性）上的迁移收益', () => {
+  it('★ 列表摘要混着 md 源码标记：默认配置零改造命中（毒化种子兜底）', async () => {
+    // 摘录从 md 源码复制（带 **），列表换行又被压平成「1. **x**2. **y**」，
+    // 而摊平器把文档的列表序号丢掉了 → T0–T2 全够不到，T3 的每个种子窗口
+    // 都含原文不存在的字符（毒化种子）→ bitap proximity 惩罚压过默认阈值。
+    // 靠适配层的放宽重试救回来（见 @isdk/approx-text-match 的 createDmpEsFallback）。
+    const doc = [
+      '# React 18 的核心特性',
+      '',
+      'React 18 引入了以下几个核心特性：',
+      '',
+      '1. **自动批处理（Automatic Batching）**',
+      '2. **并发渲染（Concurrent Rendering）**',
+      '3. **新的根 API（New Root API）**',
+      '4. **Suspense 的改进**',
+      '5. **新的 Hooks：useId、useSyncExternalStore、useInsertionEffect**',
+      '',
+      '第二章：自动批处理（Automatic Batching）',
+    ].join('\n');
+    const ex =
+      'React 18 引入了以下几个核心特性：1. **自动批处理（Automatic Batching）**' +
+      '2. **并发渲染（Concurrent Rendering）**3. **新的根 API（New Root API）**' +
+      '4. **Suspense 的改进**5. **新的 Hooks：useId、useSyncExternalStore、useInsertionEffect**';
+
+    const r = await matchExcerpt(ex, doc); // 零配置：内置 md 摊平 + 内置 dmp-es 模糊层
+    expect(r.found).toBe(true);
+    expect(r.kind).toBe('fuzzy');
+    expect(r.source).toContain('引入了以下几个核心特性');
+    expect(r.source).toEqual(doc.slice(r.index, r.index + r.length));
+  });
+
+  it('★ 同一摘录显式声明来自 md 源码（excerptIsMarkdown）也命中', async () => {
+    // 摘录先摊平会剥掉 **，但「1. 2. 3.」序号保留（换行没了不构成列表，是普通段落）
+    // —— 文档侧的序号仍被摊平器丢弃，所以毒化种子问题原样存在，走同一条兜底。
+    const doc = [
+      '# React 18 的核心特性',
+      '',
+      'React 18 引入了以下几个核心特性：',
+      '',
+      '1. **自动批处理（Automatic Batching）**',
+      '2. **并发渲染（Concurrent Rendering）**',
+      '3. **新的根 API（New Root API）**',
+      '4. **Suspense 的改进**',
+      '5. **新的 Hooks：useId、useSyncExternalStore、useInsertionEffect**',
+    ].join('\n');
+    const ex =
+      'React 18 引入了以下几个核心特性：1. **自动批处理（Automatic Batching）**' +
+      '2. **并发渲染（Concurrent Rendering）**3. **新的根 API（New Root API）**' +
+      '4. **Suspense 的改进**5. **新的 Hooks：useId、useSyncExternalStore、useInsertionEffect**';
+
+    const r = await matchExcerpt(ex, doc, { excerptIsMarkdown: true });
+    expect(r.found).toBe(true);
+    expect(r.source).toContain('引入了以下几个核心特性');
+  });
+
   it('★ md 语法不再是障碍，且返回的是可引用的真实原文', async () => {
     const ex = 'React 18 通过在默认情况下执行批处理来实现了开箱即用的性能改进。';
     // 源码里这段是「`React 18` 通过在默认…」，手搓版把反引号当字面内容 → 漏判
@@ -101,7 +155,14 @@ describe('matchExcerpt：真实长文（React 18 新特性）上的迁移收益'
     const r = await matchExcerpt(ex, DOC, T4);
     expect(r.found).toBe(true);
     // 召回落在标题「二、useDeferredValue」所在段 —— 标题就是原文
-    expect(r.source).toContain('二、useDeferredValue');
+    //
+    // 对齐起点说明：摘录里没有「二」字，diff 的首个共同段从标题后的
+    // 「、useDeferredValue」开始（摘录里的逗号与标题后的顿号对齐），
+    // 因此 span 不含「二」。这比旧版更紧：旧版 pickSeed 拿首窗口（文中不存在）
+    // 当锚点 → bitap 失败 → 对齐器落空 → 退化成整段，span 才误打误撞带上「二」。
+    // 现在 pickSeed 跳过毒化种子，对齐真正成功，span 只覆盖摘录实际对应的内容。
+    expect(r.source).toContain('useDeferredValue');
+    expect(r.source).toContain('返回一个延迟响应的值');
     expect(r.source).toEqual(DOC.slice(r.index, r.index + r.length));
   });
 
