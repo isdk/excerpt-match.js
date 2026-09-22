@@ -1,5 +1,6 @@
 /**
- * 浏览器打包测试 —— 在**真实浏览器**（Chrome）里跑同一条零配置链路。
+ * 内置默认装配的浏览器档测试 —— 在**真实浏览器**（Chrome）里验证
+ * `defaults.ts` 的惰性动态 import 链端到端可用。
  *
  * ## 它钉住什么
  *
@@ -15,12 +16,15 @@
  * 都会报「Module externalized for browser compatibility」并在运行时抛
  * `createRequire is not a function` —— 本文件当场红。
  *
- * ## 为什么有条件跳过
+ * ## 为什么按文件名分流
  *
- * 这些断言只在**浏览器运行时**才有意义：Node 档（`npm test`）里同样的
- * 零配置链路已由 `excerptMatcher.test.ts` 覆盖，这里重复跑没有价值，
- * 故 `typeof document === 'undefined'` 时整组跳过 —— 根目录 workspace
- * 一次跑全部包时本文件静默跳过，不添噪音。
+ * 这些断言只在**浏览器运行时**才有意义：Node 档（`npm test`，配置
+ * `vitest.config.ts`）已整体排除 `*.browser.test.ts`，同样的零配置链路
+ * 由 `excerptMatcher.test.ts` 覆盖；本文件只在浏览器档
+ * （`vitest.browser.ts`，真实 Chrome）里运行。
+ *
+ * `describe.skipIf(!inBrowser)` 是双重保险：即使被无配置的裸 `vitest` 拾起，
+ * Node 里也只是整组跳过，不会误红。
  *
  * @packageDocumentation
  */
@@ -29,7 +33,7 @@ import { describe, expect, it } from 'vitest';
 import { matchExcerpt } from './excerptMatcher';
 import { defaultParticleTagger } from './defaults';
 
-/** 浏览器运行时才有 document —— Node 档整组跳过（见文件头说明） */
+/** 浏览器运行时才有 document —— 双重保险（Node 档配置已按文件名排除，见文件头） */
 const inBrowser = typeof document !== 'undefined';
 
 // 真实长文（同 excerptMatcher.test.ts 的语料），验证浏览器里的完整链路
@@ -63,6 +67,36 @@ describe.skipIf(!inBrowser)('浏览器打包：零配置链路在 Chrome 中端�
     expect(r.found).toBe(true);
     expect(r.kind).toBe('fuzzy');
     expect(r.via).toBe('diff-match-patch-es');
+  });
+
+  it('★ 毒化种子：Bitap 放宽重试在浏览器里同样兜底', async () => {
+    // 摘录从 md 源码复制（带 **）、列表换行被压平成「1. **x**2. **y**」，
+    // 而摊平器把文档的列表序号丢掉了 → 每个种子窗口都含原文不存在的字符 →
+    // bitap 的 proximity 惩罚压过默认阈值。适配层的放宽重试必须把它救回来。
+    // 与 fixtures/md-poisoned-seed-markers 同一条链路，但这里跑在真实浏览器里 ——
+    // 钉住「纯 ESM 的 dmp-es 在浏览器打包后仍能完成重试」。
+    const doc = [
+      '# React 18 的核心特性',
+      '',
+      'React 18 引入了以下几个核心特性：',
+      '',
+      '1. **自动批处理（Automatic Batching）**',
+      '2. **并发渲染（Concurrent Rendering）**',
+      '3. **新的根 API（New Root API）**',
+      '4. **Suspense 的改进**',
+      '5. **新的 Hooks：useId、useSyncExternalStore、useInsertionEffect**',
+    ].join('\n');
+    const ex =
+      'React 18 引入了以下几个核心特性：1. **自动批处理（Automatic Batching）**' +
+      '2. **并发渲染（Concurrent Rendering）**3. **新的根 API（New Root API）**' +
+      '4. **Suspense 的改进**5. **新的 Hooks：useId、useSyncExternalStore、useInsertionEffect**';
+
+    const r = await matchExcerpt(ex, doc);
+    expect(r.found).toBe(true);
+    expect(r.kind).toBe('fuzzy');
+    expect(r.via).toBe('diff-match-patch-es');
+    expect(r.source).toContain('引入了以下几个核心特性');
+    expect(r.source).toBe(doc.slice(r.index, r.index + r.length));
   });
 
   it('★ 内置 cjk-number（纯 ESM，exports 仅 import 条件）加载成功', async () => {

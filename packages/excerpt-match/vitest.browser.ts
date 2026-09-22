@@ -21,10 +21,12 @@ import { defineConfig } from 'vitest/config';
  * none 只是无头浏览器占位（依赖全局 playwright 安装），playwright provider
  * 用系统 Chrome 即可，装包最小。CI 无 Chrome 时靠跳过条件兜底。
  *
- * ## 浏览器档只跑打包测试
+ * ## 浏览器档只跑默认装配测试
  *
- * `include` 收窄到 `browserPackaging`：其余测试是 Node 工程链路的单元/属性
- * 测试（fixture 文件读取、fast-check 等），不属于「包能否在浏览器打包」的契约。
+ * `include` 收窄到浏览器测试文件名约定（`*.browser.test.ts`）：其余测试
+ * 是 Node 工程链路的单元/属性测试（fixture 文件读取、fast-check 等），
+ * 不属于「默认装配在浏览器里能否加载」的契约。Node 档默认配置
+ * （`vitest.config.ts`）按同一条约定排除本类文件，两档互不重叠。
  */
 export default defineConfig({
   // jieba 的 web 构建用 `new URL('jieba_bg.wasm', import.meta.url)` 运行时拉取
@@ -33,7 +35,7 @@ export default defineConfig({
   // browser 模式起的是 vite dev server，读的是这里而不是 test.optimizeDeps）。
   optimizeDeps: { exclude: ['@isdk/nlp-jieba'] },
   test: {
-    include: ['src/browserPackaging.test.ts'],
+    include: ['src/**/*.browser.test.ts'],
     browser: {
       enabled: true,
       name: 'chromium',
