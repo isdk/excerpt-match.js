@@ -19,12 +19,22 @@
 
 // #region 小工具
 
-/** 挑一段「在原文里出现次数最少」的种子。Bitap/模糊搜索对长 pattern 有上限，
- *  用短种子定位再扩展，比直接扔长串进去更稳（seed-and-extend）。 */
-function pickSeed(hay: string, needle: string, maxLen = 24): { seed: string; offset: number } | null {
+/**
+ * 挑一段「在原文里出现次数最少」的种子。Bitap/模糊搜索对长 pattern 有上限，
+ *  用短种子定位再扩展，比直接扔长串进去更稳（seed-and-extend）。
+ *
+ * **毒化种子**：摘录里混着文档侧不存在的字符时（md 标记 `**`、被压坏的列表序号、
+ * OCR 噪声……），含它们的窗口在原文里出现 0 次。「出现 0 次」不是「最稀有」——
+ * 稀有但**存在**的种子才能当锚点，根本不存在的只会让 Bitap 空手而归。
+ * 因此 count=0 的窗口永不胜出，只在所有窗口都找不到时留作备胎
+ * （按「有多少字符在原文里出现过得比较」择优，字符集惰性构建 —— 常规路径零开销）。
+ */
+export function pickSeed(hay: string, needle: string, maxLen = 24): { seed: string; offset: number } | null {
   if (needle.length === 0) return null;
   const len = Math.min(maxLen, needle.length);
-  let best: { seed: string; offset: number; count: number } | null = null;
+  let best: { seed: string; offset: number; count: number; present: number } | null = null;
+  // 惰性字符集：只有真的出现「全文都找不到的种子」时才建（大文档 O(n)，常规路径不付）
+  let hayChars: Set<string> | null = null;
   const tries = Math.min(5, needle.length - len + 1);
   for (let k = 0; k < tries; k++) {
     const offset = tries === 1 ? 0 : Math.floor((k * (needle.length - len)) / (tries - 1));
@@ -36,8 +46,20 @@ function pickSeed(hay: string, needle: string, maxLen = 24): { seed: string; off
       count++;
       at = hay.indexOf(seed, at + 1);
     }
-    if (!best || count < best.count) best = { seed, offset, count };
-    if (count <= 1) break;
+    if (count > 0) {
+      // 真实存在的锚点永远胜过任何「全文都没有」的窗口
+      if (!best || best.count === 0 || count < best.count) {
+        best = { seed, offset, count, present: len };
+        if (count <= 1) break;
+      }
+      continue;
+    }
+    hayChars ??= new Set(hay);
+    let present = 0;
+    for (let i = 0; i < seed.length; i++) if (hayChars.has(seed[i])) present++;
+    if (!best || (best.count === 0 && present > best.present)) {
+      best = { seed, offset, count, present };
+    }
   }
   return best ? { seed: best.seed, offset: best.offset } : null;
 }
@@ -126,8 +148,11 @@ export interface BitapFallbackOptions {
  *
  * **算法（seed-and-extend）**：
  * 1. 从摘录里挑一段「在页面中出现次数最少」的种子 —— Bitap 对 pattern
- *    长度有 32 位上限，长摘录直接扔进去会抛 `Pattern too long`
- * 2. 用 Bitap 在全文里模糊定位这颗种子
+ *    长度有 32 位上限，长摘录直接扔进去会抛 `Pattern too long`。
+ *    「出现 0 次」的毒化窗口（混入页面不存在的标记字符）不当锚点，见 {@link pickSeed}
+ * 2. 用 Bitap 在全文里模糊定位这颗种子。种子定位不到精确落点时
+ *    `loc` 退化为 0，proximity 惩罚可能压过默认阈值 —— 适配层据此放宽重试
+ *    （`createDmpEsFallback` / `createDmpFallback`，两个后端行为一致）
  * 3. 以它为原点开窗口，跑序列比对精修起止边界并打分
  *
  * @remarks

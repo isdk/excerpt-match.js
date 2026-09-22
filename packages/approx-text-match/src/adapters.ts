@@ -57,6 +57,16 @@ export function createDmpFallback(
     (text, pattern, loc) => {
       dmp.Match_Threshold = threshold;
       dmp.Match_Distance = distance;
+      const p = dmp.match_main(text, pattern, loc);
+      if (p >= 0) return p;
+      // 放宽重试（同 createDmpEsFallback，两个后端行为一致）：毒化种子
+      // 找不到精确落点 → loc 退化为 0 → proximity 惩罚压过阈值。这条惩罚
+      // 是坏位置估计的产物，不代表匹配质量差。先放宽阈值，再摘掉 proximity。
+      // 注意 Match_* 是实例属性：下次进入闭包会先重置，不会泄漏到别的调用。
+      dmp.Match_Threshold = 1.0;
+      const p2 = dmp.match_main(text, pattern, loc);
+      if (p2 >= 0) return p2;
+      dmp.Match_Distance = Number.POSITIVE_INFINITY;
       return dmp.match_main(text, pattern, loc);
     },
     (a, b) => {
@@ -110,10 +120,14 @@ export interface DmpEsLike {
  * ```
  *
  * @remarks
- * 两点注意：
+ * 三点注意：
  * 1. 该包是**纯 ESM**（`exports` 只暴露 `.mjs`）。构建链含 CJS 环节时请先确认能否 require。
  * 2. 它对 `matchThreshold` 比原版敏感 —— 实测同一摘录在 0.4 下返回 -1、0.5 下正常。
  *    因此这里默认不传 options，直接用库的默认值。
+ * 3. Bitap 首次返回 -1 时会**放宽重试**（先放宽阈值，再摘掉 proximity 惩罚）。
+ *    毒化种子（摘录混入原文不存在的字符）找不到精确落点 → `loc` 退化为 0 →
+ *    proximity 惩罚压过阈值；这条惩罚是坏位置估计的产物，不代表匹配质量差。
+ *    放宽 Bitap 只影响窗口起点，假阳性被后面的 diff 分数拦住。
  */
 export function createDmpEsFallback(
   dmpEs: DmpEsLike,
@@ -130,7 +144,18 @@ export function createDmpEsFallback(
         };
 
   return createBitapFallback(
-    (text, pattern, loc) => dmpEs.match(text, pattern, loc, matchOpts),
+    (text, pattern, loc) => {
+      const p = dmpEs.match(text, pattern, loc, matchOpts);
+      if (p >= 0) return p;
+      // 放宽重试：种子在原文里一次都不出现（毒化种子，见 pickSeed）时
+      // `loc` 被迫退化为 0，于是 |loc - 真实位置| / matchDistance 这条
+      // proximity 惩罚完全是坏位置估计的产物，轻易就压过默认阈值。
+      // 先只放宽阈值（保留 proximity），再彻底摘掉 proximity 兜底。
+      // 窗口起点偏了不会造成假阳性 —— 命中质量最终由 diff 分数（minFallbackScore）把关。
+      const p2 = dmpEs.match(text, pattern, loc, { ...matchOpts, matchThreshold: 1.0 });
+      if (p2 >= 0) return p2;
+      return dmpEs.match(text, pattern, loc, { ...matchOpts, matchThreshold: 1.0, matchDistance: Number.POSITIVE_INFINITY });
+    },
     (a, b) => {
       const out: DiffChunk[] = [];
       for (const [op, text] of dmpEs.diff(a, b)) out.push({ op: op as DiffOp, text });
