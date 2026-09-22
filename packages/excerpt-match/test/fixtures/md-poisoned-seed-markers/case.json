@@ -1,0 +1,64 @@
+{
+  "description": "md-poisoned-seed-markers：摘录混入原文不存在的字符（md 标记 + 被压平的列表序号）时，零配置链路的毒化种子兜底；含换行变体与微小错误的容错",
+  "use": ["matcher"],
+  "cases": [
+    {
+      "name": "零配置：摘录带 ** 且列表序号被压平 → 毒化种子由内置 dmp-es 兜底命中",
+      "excerpt": "React 18 引入了以下几个核心特性：1. **自动批处理（Automatic Batching）**2. **并发渲染（Concurrent Rendering）**3. **新的根 API（New Root API）**4. **Suspense 的改进**5. **新的 Hooks：useId、useSyncExternalStore、useInsertionEffect**",
+      "expect": {
+        "hit": true,
+        "kind": "fuzzy",
+        "via": "diff-match-patch-es",
+        "crossesBlocks": true,
+        "punctFolded": false,
+        "visible": { "$contains": "引入了以下几个核心特性" },
+        "span": { "$contains": "新的 Hooks" }
+      }
+    },
+    {
+      "name": "带换行的摘要也能命中：列表项各自成行，换行在归一化时被收拢",
+      "excerpt": "React 18 引入了以下几个核心特性：\n1. **自动批处理（Automatic Batching）**\n2. **并发渲染（Concurrent Rendering）**\n3. **新的根 API（New Root API）**\n4. **Suspense 的改进**\n5. **新的 Hooks：useId、useSyncExternalStore、useInsertionEffect**",
+      "expect": {
+        "hit": true,
+        "kind": "fuzzy",
+        "via": "diff-match-patch-es",
+        "visible": { "$contains": "引入了以下几个核心特性" },
+        "span": { "$contains": "新的 Hooks" }
+      }
+    },
+    {
+      "name": "微小错误也能命中：React 18 误写成 React 118，T3 模糊层吸收单字插入",
+      "excerpt": "React 118 通过引入自动批处理机制，解决了上述问题。现在，无论状态更新发生在何处，React 都会自动将它们批处理到单个重新渲染中。",
+      "expect": {
+        "hit": true,
+        "kind": "fuzzy",
+        "via": "diff-match-patch-es",
+        "visible": { "$contains": "通过引入自动批处理机制" },
+        "span": { "$contains": "批处理到单个重新渲染" }
+      }
+    },
+    {
+      "name": "excerptIsMarkdown：先摊平摘录（剥掉 **）也走同一条兜底 —— 序号仍在",
+      "excerpt": "React 18 引入了以下几个核心特性：1. **自动批处理（Automatic Batching）**2. **并发渲染（Concurrent Rendering）**3. **新的根 API（New Root API）**4. **Suspense 的改进**5. **新的 Hooks：useId、useSyncExternalStore、useInsertionEffect**",
+      "options": { "excerptIsMarkdown": false },
+      "expect": {
+        "hit": true,
+        "kind": "fuzzy",
+        "via": "diff-match-patch-es",
+        "visible": { "$contains": "引入了以下几个核心特性" }
+      }
+    },
+    {
+      "name": "关掉模糊层 → T0–T2 全够不到（证明命中确实靠 T3 的放宽重试）",
+      "excerpt": "React 18 引入了以下几个核心特性：1. **自动批处理（Automatic Batching）**2. **并发渲染（Concurrent Rendering）**3. **新的根 API（New Root API）**4. **Suspense 的改进**5. **新的 Hooks：useId、useSyncExternalStore、useInsertionEffect**",
+      "options": { "fallbacks": [] },
+      "expect": { "hit": false, "kind": "none" }
+    },
+    {
+      "name": "关掉模糊层 → 微小错误同样够不到（T0–T2 无法吸收多出的那个 1）",
+      "excerpt": "React 118 通过引入自动批处理机制，解决了上述问题。现在，无论状态更新发生在何处，React 都会自动将它们批处理到单个重新渲染中。",
+      "options": { "fallbacks": [] },
+      "expect": { "hit": false, "kind": "none" }
+    }
+  ]
+}

@@ -13,16 +13,21 @@
  * | `jieba` | jieba 词性消歧的助词折叠器 |
  * | `cjk` | `cjk-number` 中文数词解析（同时开启 `cjkNumerals`） |
  * | `semantic` | 走 T4：用内置的确定性「假召回器」驱动 `locateSemantic` |
+ * | `matcher` | 走**高层入口** `createExcerptMatcher`：md 摊平器与 T3 模糊层 |
+ * |              | 都由内置默认装配（零配置链路），而不是 fixture 显式注入 |
  *
  * `semantic` 与 `dmp` 同用时，`dmp` 兼作 T4 的**段内再对齐器** ——
  * 这正是 README 推荐的「外部召回 + 段内确定性对齐」组合。
+ *
+ * `matcher` 刻意**不**附带 `markdown`：高层入口自己装配默认摊平器，
+ * 这样测的才是用户开箱即用的那条链路（fixture 里另写 `markdown` 会变成显式注入）。
  */
 
 import { createMdastFlattener, regexFlattener } from '@isdk/md-flatten';
 import type { FallbackMatcher, MarkdownFlattener, SemanticRetriever } from '../src/index';
 import { createDmpFallback, createDmpEsFallback } from '../src/index';
 
-const KNOWN_USES = ['markdown', 'markdown:regex', 'dmp', 'dmpEs', 'jieba', 'cjk', 'semantic'] as const;
+const KNOWN_USES = ['markdown', 'markdown:regex', 'dmp', 'dmpEs', 'jieba', 'cjk', 'semantic', 'matcher'] as const;
 
 /**
  * 确定性的「假召回器」—— 按共有字符比例给段落打分。
@@ -53,6 +58,8 @@ export interface ResolvedContext {
   semantic?: boolean;
   /** T4 的召回器 */
   retriever?: SemanticRetriever;
+  /** 是否走高层入口 `createExcerptMatcher`（零配置链路）而不是 `index.locate` */
+  matcher?: boolean;
   /** T4 的段内再对齐器；不传则退化为高亮整段并降分 */
   aligner?: FallbackMatcher;
 }
@@ -116,6 +123,13 @@ export async function resolveContext(
     // 有注入 dmp 就让它兼作段内对齐器 —— 召回给粗位置，对齐给精确坐标
     const fallbacks = out.options.fallbacks as FallbackMatcher[] | undefined;
     if (fallbacks?.length) out.aligner = fallbacks[0];
+  }
+
+  if (use.includes('matcher')) {
+    // 高层入口自己装配 md 摊平器与 T3 模糊层：这里只做标记，
+    // 不往 options 里塞任何能力 —— 否则测的就不是「零配置」链路了。
+    // 需要收紧时在 case.json 里写 options（如 `fallbacks: []` 关掉模糊层）。
+    out.matcher = true;
   }
 
   return out;

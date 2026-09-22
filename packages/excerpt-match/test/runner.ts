@@ -15,6 +15,16 @@
  * `visible` 比 `span` 更能说明「到底匹配到了什么」：md 模式下
  * `span` 里混着 `**`、`[](url)`，而 `visible` 就是页面上那句话。
  *
+ * ## 两条执行路径
+ *
+ * | `use` | 入口 | 摊平器 / 模糊层从哪来 |
+ * |---|---|---|
+ * | 默认 | `index.locate`（T0–T3）或 `locateSemantic`（`semantic`） | fixture 经 `use` 代号**显式注入** |
+ * | `matcher` | `createExcerptMatcher`（T0–T4 编排） | 高层入口**自己装配内置默认**（零配置链路） |
+ *
+ * `matcher` 路径的 `span` / `visible` / `line` 直接取结果自带字段 ——
+ * 高层入口已经算好了，不必再走 `visibleOf`。
+ *
  * ## 不变式
  *
  * 坐标契约这类「对每个 fixture 都该成立」的检查不用写进 `case.json`，
@@ -23,7 +33,16 @@
 
 import { validate, ValidationContext } from '@isdk/match-ex';
 import type { MatchFailure } from '@isdk/match-ex';
-import { createTextIndex, isHit, locateSemantic, type ExcerptMatch, type TextIndex } from '../src/index';
+import {
+  createExcerptMatcher,
+  createTextIndex,
+  isHit,
+  locateSemantic,
+  type ExcerptMatch,
+  type ExcerptMatchResult,
+  type ExcerptMatcher,
+  type TextIndex,
+} from '../src/index';
 import type { LoadedCase, LoadedFixture, RawOptions } from './fixture';
 import { isRegexSpec, toRegExp } from './fixture';
 import { resolveContext, type ResolvedContext } from './capabilities';
@@ -63,6 +82,25 @@ interface ResolvedIndex {
 /** 缓存键必须带上 fixture 标识 —— 否则不同 fixture 会串用同一份文档 */
 function optionsKey(id: string, use: readonly string[], options: RawOptions): string {
   return JSON.stringify([id, use, options]);
+}
+
+/**
+ * 高层入口（`createExcerptMatcher`）也按同一份选项缓存。
+ *
+ * @remarks
+ * 它与 {@link buildIndex} 是两条并行路径：`matcher` 走零配置装配
+ * （摊平器 / 模糊层由入口自己加载），`index.locate` 走 fixture 显式注入。
+ * 两者用同一个缓存键，因为它们由 `use` 区分，不会冲突。
+ */
+const matcherCache = new Map<string, Promise<ExcerptMatcher>>();
+
+async function buildMatcher(fx: LoadedFixture, options: RawOptions): Promise<ExcerptMatcher> {
+  const key = optionsKey(fx.id, ['matcher'], options);
+  const hit = matcherCache.get(key);
+  if (hit) return hit;
+  const task = createExcerptMatcher(fx.raw, options as never);
+  matcherCache.set(key, task);
+  return task;
 }
 
 async function buildIndex(fx: LoadedFixture, options: RawOptions, use: readonly string[]): Promise<ResolvedIndex> {
@@ -191,13 +229,46 @@ export interface CaseResult {
   actual: ActualResult;
 }
 
+/**
+ * 高层入口的结果比 `ExcerptMatch` 多出「结论 + 可引用原文」，直接摊成 `ActualResult`。
+ *
+ * @remarks
+ * `span` / `visible` / `line` 用结果自带的 `source` / `text` / `line` ——
+ * 高层入口已经算好了（`text` 是片段单独摊平的可见文本），不必再走 `visibleOf`。
+ */
+function toActualFromResult(r: ExcerptMatchResult): ActualResult {
+  return {
+    hit: r.found,
+    index: r.index,
+    length: r.length,
+    kind: r.kind,
+    score: r.score,
+    occurrences: r.occurrences,
+    crossesBlocks: r.crossesBlocks,
+    via: r.via,
+    punctFolded: r.punctFolded,
+    span: r.source,
+    visible: r.text,
+    line: r.line,
+  };
+}
+
 export async function runCase(fx: LoadedFixture, c: LoadedCase): Promise<CaseResult> {
-  const { ctx, index } = await buildIndex(fx, c.options, c.use);
-  // T4 走另一条入口：外部召回 + 段内再对齐，而不是 index.locate 的 T0–T3 分层
-  const res = ctx.semantic && ctx.retriever
-    ? await locateSemantic(index, c.excerpt, ctx.retriever, { ...c.options, aligner: ctx.aligner } as never)
-    : index.locate(c.excerpt);
-  const actual = toActual(ctx, fx.raw, res);
+  let actual: ActualResult;
+
+  // `matcher` 走高层入口：零配置链路（内置 md 摊平 + 内置 dmp-es 模糊层），
+  // 与 `index.locate` 的显式注入路径分开缓存、分开执行。
+  if (c.use.includes('matcher')) {
+    const matcher = await buildMatcher(fx, c.options);
+    actual = toActualFromResult(await matcher.match(c.excerpt));
+  } else {
+    const { ctx, index } = await buildIndex(fx, c.options, c.use);
+    // T4 走另一条入口：外部召回 + 段内再对齐，而不是 index.locate 的 T0–T3 分层
+    const res = ctx.semantic && ctx.retriever
+      ? await locateSemantic(index, c.excerpt, ctx.retriever, { ...c.options, aligner: ctx.aligner } as never)
+      : index.locate(c.excerpt);
+    actual = toActual(ctx, fx.raw, res);
+  }
 
   const failures: MatchFailure[] = [];
   failures.push(...(await matchExpectation(actual, c.expect)));

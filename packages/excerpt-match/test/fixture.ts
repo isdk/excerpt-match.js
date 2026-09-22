@@ -180,8 +180,14 @@ function loadFixture(dir: string, id: string): LoadedFixture {
   }
 
   const use = [...(decl.use ?? [])];
-  // 能默认就默认：.md 文档必然要摊平，不必每个 fixture 都重复写 use: ['markdown']
-  if (extname(docName) === '.md' && !use.some((u) => u.startsWith('markdown'))) {
+  // 能默认就默认：.md 文档必然要摊平，不必每个 fixture 都重复写 use: ['markdown']。
+  // 但 `matcher` 例外：它走高层入口，摊平器由入口自己装配 ——
+  // fixture 再写 markdown 就变成显式注入，测的就不是零配置链路了。
+  if (
+    extname(docName) === '.md' &&
+    !use.some((u) => u.startsWith('markdown')) &&
+    !use.includes('matcher')
+  ) {
     use.unshift('markdown');
   }
 
