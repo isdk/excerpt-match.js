@@ -77,8 +77,15 @@ has no dedicated library — which is the reason `@isdk/approx-text-match` exist
 
 What gets extracted is not "calling dmp" but two things dmp does not handle:
 
-1. **seed-and-extend**：摘录里挑"在页面中出现次数最少"的种子 → Bitap 定位 → 双向扩展。
-   Bitap degrades on long patterns, so passing the whole excerpt is unstable.
+1. **seed-and-extend**: pick the seed that "occurs fewest times in the page" → Bitap
+   localization → bidirectional extension. Bitap degrades on long patterns, so
+   passing the whole excerpt is unstable. Seed selection skips **poisoned seeds**:
+   when the excerpt mixes in characters absent from the document (md markers `**`,
+   mangled list numbers, OCR noise), windows containing them occur zero times —
+   "does not exist" is not "rarest", Bitap returns nothing. When localization still
+   fails, the adapter retries relaxed (the proximity penalty is an artifact of a
+   bad location estimate, not of match quality); final hit quality stays gated by
+   the diff score.
 2. **Determining the span boundary**: dmp's `match_main` **returns only a start, no length**.
    This library refines the end via diff and snaps it to grapheme boundaries.
 
@@ -196,7 +203,13 @@ space is effectively unbounded and hand-written cases cannot cover it.
 (that comes from `diff-match-patch-es`), but the two things no library does:
 
 1. **seed-and-extend** — Bitap degrades on long patterns, so pick the seed that
-   occurs fewest times in the page, locate it, then open a window.
+   occurs fewest times in the page, locate it, then open a window. Seed selection
+   skips **poisoned seeds**: excerpts can mix in characters absent from the
+   document (md markers `**`, mangled list numbers, OCR noise), and windows
+   containing them occur zero times — "absent" is not "rarest", Bitap would
+   return nothing. When localization still fails, the adapter retries relaxed
+   (the proximity penalty is an artifact of a bad location estimate, not of
+   match quality); final hit quality stays gated by the diff score.
 2. **Determining the span boundary** — `match_main` returns **only a start, no
    length**; the end has to be refined via diff.
 

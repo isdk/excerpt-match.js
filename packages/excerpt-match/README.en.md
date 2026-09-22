@@ -992,7 +992,14 @@ ourselves.
 >    Verify `require` works if your pipeline has a CJS stage.
 > 2. It is more sensitive to `matchThreshold` than the original — the same excerpt
 >    returns -1 at 0.4 but matches at 0.5. So the adapter passes **no** options by
->    default and relies on the library default.
+>    default and relies on the library default; only when localization fails (-1)
+>    does it **retry relaxed** (looser threshold, then the proximity penalty
+>    dropped). The typical case is a poisoned seed: the excerpt mixes in characters
+>    absent from the document, so every seed window occurs zero times, `loc`
+>    degrades to 0, and the `|loc - true position| / matchDistance` penalty pushes
+>    the score past the threshold — an artifact of a bad location estimate, not of
+>    poor match quality. Relaxing Bitap only shifts the window origin; whether the
+>    hit stands is still decided by the diff score.
 
 All three adapters share `createBitapFallback(match, diff)`; swapping backends only
 requires two functions.
@@ -1154,7 +1161,7 @@ Coverage includes: per-tier cases, coordinate round-trip property tests (random 
 cross-block adjacency and first-match ordering, escape/entity exactness,
 and normalization idempotence.
 
-The browser packaging test (`src/browserPackaging.test.ts`) runs the same
+The browser-tier defaults test (`src/defaults.browser.test.ts`) runs the same
 zero-config pipeline inside **real Chrome**: the md flattener (mdast + GFM),
 `diff-match-patch-es`, `cjk-number` and jieba (web wasm build + dictionary)
 defaults must load, and hits must map back to source coordinates. It pins
@@ -1163,6 +1170,10 @@ Node-only primitive sneaking in gets externalized by vite and blows up at
 runtime — the test goes red on the spot), and dynamic imports use literal
 specifiers only (a variable-form `import(id)` is an unresolvable bare
 specifier in the browser — a real bug this test caught).
+
+Convention: browser-only tests are named `*.browser.test.ts`; the default
+Node config (`vitest.config.ts`) excludes them entirely, so `npm test`
+results contain no skipped browser cases.
 
 Requirements: `@vitest/browser` + `playwright` (already in devDependencies).
 It prefers your local Chrome via `channel: 'chrome'`, falling back to the

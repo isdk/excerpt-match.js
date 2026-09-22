@@ -20,7 +20,12 @@ The former cannot derive the latter: characters that fuzzy search **skips**
 only the two things libraries do not:
 
 1. **seed-and-extend** — Bitap degrades on long patterns; pick the seed that
-   occurs fewest times, locate it, then open a window
+   occurs fewest times, locate it, then open a window. Seed selection avoids
+   **poisoned seeds**: when the excerpt contains characters absent from the
+   document (md markers `**`, mangled list numbers, OCR noise…), windows
+   containing them occur **zero** times. Zero is not "rarest" — a seed that
+   does not exist makes Bitap return nothing; only rare-but-present seeds
+   work as anchors.
 2. **Span boundary** — `match_main` returns **a start but no length**;
    refine the end via diff
 
@@ -44,7 +49,13 @@ find.find('本院认为被告的行为构成根本违约', '本院认为，被�
 ## Boundaries and trade-offs
 
 - **Do not pass `threshold` by default** — the es build is more sensitive;
-  `{threshold: 0.4}` made hits that previously worked return `-1`
+  `{threshold: 0.4}` made hits that previously worked return `-1`. Internally,
+  when Bitap returns -1 the adapter **retries relaxed** (looser threshold,
+  then proximity penalty dropped): a poisoned seed has no exact occurrence, so
+  `loc` degrades to 0 and the `|loc - true position| / matchDistance` penalty —
+  an artifact of a bad location estimate — pushes the score past the default
+  threshold. Relaxing Bitap cannot create false positives: quality is gated by
+  the diff score.
 - `diff-match-patch-es` is **ESM-only**; check CJS steps in your build
 - I/O is **plain string offsets**: no coordinate mapping here
 

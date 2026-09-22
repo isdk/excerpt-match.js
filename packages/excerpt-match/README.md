@@ -905,7 +905,11 @@ locateExcerpt(ex, text, { markdown: md, fallbacks: [fuzzy] });
 > 1. `diff-match-patch-es` 是**纯 ESM**（`exports` 只暴露 `.mjs`），
 >    构建链含 CJS 环节时请先确认能否 `require`。
 > 2. 它对 `matchThreshold` 比原版敏感 —— 实测同一摘录在 0.4 下返回 -1、0.5 下正常。
->    因此 adapter 默认**不传** options，直接用库的默认值。
+>    因此 adapter 默认**不传** options，直接用库的默认值；首次定位失败（-1）时才
+>    **放宽重试**（先放宽阈值、再摘掉 proximity 惩罚）。典型场景是毒化种子：摘录混入
+>    文档不存在的字符时所有种子窗口都出现 0 次，`loc` 退化为 0，于是
+>    `|loc - 真实位置| / matchDistance` 这条惩罚压过阈值 —— 它是坏位置估计的产物，
+>    不是匹配质量差。放宽 Bitap 只影响窗口起点，命中与否最终由 diff 分数把关。
 
 三个 adapter 共用 `createBitapFallback(match, diff)`，换后端只需提供两个函数。
 
@@ -1068,13 +1072,17 @@ npm run build         # tsup，产出 ESM + CJS + .d.ts
 测试覆盖：分层用例、坐标还原属性测试（随机切片往返验证）、
 跨块相邻性与首个匹配、转义 / 实体精确性、归一化幂等。
 
-浏览器打包测试（`src/browserPackaging.test.ts`）在**真实 Chrome** 里跑
-同一条零配置链路：md 摊平（mdast + GFM）、`diff-match-patch-es`、
+内置默认装配的浏览器档测试（`src/defaults.browser.test.ts`）在**真实 Chrome**
+里跑同一条零配置链路：md 摊平（mdast + GFM）、`diff-match-patch-es`、
 `cjk-number`、jieba（web 构建 wasm + 词典）内置默认加载成功、命中坐标
 可回切 —— 钉住两条不变量：
 静态依赖图不含 `node:*`（任何 Node 专用原语混进来，vite 都会外置该模块
 并在运行时炸掉，测试当场红）；动态 import 一律字面量说明符（变量形态
 在浏览器里是无法解析的裸说明符，这是打包测试真抓出过的 bug）。
+
+约定：只在浏览器里跑的测试以 `*.browser.test.ts` 命名，Node 档默认配置
+（`vitest.config.ts`）整体排除这类文件，`npm test` 的结果里便不会出现
+「skipped」的浏览器用例。
 
 环境要求：`@vitest/browser` + `playwright`（已在本包 devDependencies），
 默认 `channel: 'chrome'` 复用本机 Chrome，没有时退回
