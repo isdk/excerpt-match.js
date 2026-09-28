@@ -72,8 +72,8 @@ interface ResolvedOptions {
   profile: LanguageProfile;
   ignoreCase: boolean;
   ignorePunctuation: IgnorePunctuationOption;
-  /** 生效的省略号模式（`DEFAULT_ELLIPSIS` 或调用方覆盖）—— 给保护区用 */
-  ellipsisPatterns: readonly EllipsisPattern[];
+  /** 是否启用固定的省略约定（{@link MatchOptions.ellipsis}）；关闭时约定标记按普通文本处理 */
+  ellipsis: boolean;
   ignoreWidth: boolean;
   ignoreParticles: boolean | ParticleTagger;
   numberGrouping: boolean;
@@ -82,7 +82,6 @@ interface ResolvedOptions {
   cjkNumeralParser?: ChineseNumeralParser;
   splitCamelCase: boolean;
   normalizeIdentifierSeparators: boolean;
-  allowSegmented: boolean;
   minSegmentLength: number;
   maxGap: number;
   checkPolarity: boolean;
@@ -113,14 +112,17 @@ interface NormOpts {
  * 把「用户/系统定义的省略表达」并入 `ignorePunctuation` 的保护区。
  *
  * @remarks
- * 省略号是**结构**而不是排版标点：摘录里出现 `……`，是作者明确在说「此处省略」。
- * 折叠掉它，`ignorePunctuation` 就会连带废掉 T2 分段锚点 ——
- * 开启开关反而比关闭更难命中，这与开关的意图正好相反。
+ * 约定省略标记是**结构**而不是排版标点：摘录里出现 `〔略〕`，是作者明确在说「此处省略」。
+ * 折叠掉它，T2 分段锚点就随之废掉 —— 开启 `ignorePunctuation` 反而比关闭更难命中，
+ * 与开关的意图正好相反。所以约定启用时默认保护；只有 `{ preserveEllipsis: false }
+ * 才允许折叠它们。
  *
- * 所以默认保护；只有 `{ preserveEllipsis: false }` 才允许折叠它们。
+ * 而约定本身被关闭（`ellipsis: false`）时不再保护：关掉的约定就是普通文本，
+ * 「`〔略〕` 随标点折叠」正是调用方想要的降级。
  */
 function resolveIgnorePunctuation(r: ResolvedOptions): IgnorePunctuationOption {
-  return withKeep(r.ignorePunctuation, r.ellipsisPatterns as readonly (string | RegExp)[]);
+  if (!r.ellipsis) return r.ignorePunctuation ?? false;
+  return withKeep(r.ignorePunctuation, DEFAULT_ELLIPSIS as readonly (string | RegExp)[]);
 }
 
 function toNormalizationOptions(r: ResolvedOptions): NormOpts {
@@ -307,7 +309,8 @@ function resolve(input: MatchOptions, text: string): ResolvedOptions {
       normalizeIdentifierSeparators: o.normalizeIdentifierSeparators ?? false,
     }).text;
   const locale = o.locale && o.locale !== 'auto' ? o.locale : profile.id;
-  const ellipsisPatterns = o.ellipsis ?? DEFAULT_ELLIPSIS;
+  // 省略约定固定为 DEFAULT_ELLIPSIS，不接受自定义 —— 唯一的自由度是整体开关（见 types.ts）
+  const ellipsis = o.ellipsis ?? true;
   return {
     locale,
     // null = 调用方显式强制纯文本（类型上与 undefined 同义）
@@ -320,7 +323,7 @@ function resolve(input: MatchOptions, text: string): ResolvedOptions {
     profile,
     ignoreCase: o.ignoreCase ?? true,
     ignorePunctuation: o.ignorePunctuation ?? false,
-    ellipsisPatterns: ellipsisPatterns,
+    ellipsis,
     ignoreWidth: o.ignoreWidth ?? true,
     ignoreParticles: o.ignoreParticles ?? false, // 默认不折叠：误判代价高于漏判
     numberGrouping: o.numberGrouping ?? true,
@@ -329,13 +332,12 @@ function resolve(input: MatchOptions, text: string): ResolvedOptions {
     cjkNumeralParser: o.cjkNumeralParser,
     splitCamelCase: o.splitCamelCase ?? false,
     normalizeIdentifierSeparators: o.normalizeIdentifierSeparators ?? false,
-    allowSegmented: o.allowSegmented ?? true,
     minSegmentLength: o.minSegmentLength ?? 4,
     maxGap: o.maxGap ?? Infinity,
     checkPolarity: o.checkPolarity ?? true,
     negationLexicon: o.negationLexicon,
-    ellipsisSplit: buildEllipsisRe(ellipsisPatterns, 'g', normPattern),
-    ellipsisTest: buildEllipsisRe(ellipsisPatterns, '', normPattern),
+    ellipsisSplit: buildEllipsisRe(DEFAULT_ELLIPSIS, 'g', normPattern),
+    ellipsisTest: buildEllipsisRe(DEFAULT_ELLIPSIS, '', normPattern),
     minFallbackScore: o.minFallbackScore ?? 0.75,
     fallbacks: o.fallbacks ?? [],
   };
@@ -758,7 +760,7 @@ function tryDirect(
       punctFolded: punctuationDiverges(view, at, at + needle.length, excerptRendered, r),
     };
   }
-  if (r.allowSegmented && r.ellipsisTest.test(needle)) {
+  if (r.ellipsis && r.ellipsisTest.test(needle)) {
     const seg = findSegmented(view.norm, needle, r);
     if (seg) {
       return {

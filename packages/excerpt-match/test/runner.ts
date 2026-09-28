@@ -44,7 +44,6 @@ import {
   type TextIndex,
 } from '../src/index';
 import type { LoadedCase, LoadedFixture, RawOptions } from './fixture';
-import { isRegexSpec, toRegExp } from './fixture';
 import { resolveContext, type ResolvedContext } from './capabilities';
 
 /** 交给 `expect` 匹配的实际结果：定位结果 + 派生字段 */
@@ -109,7 +108,7 @@ async function buildIndex(fx: LoadedFixture, options: RawOptions, use: readonly 
   if (hit) return hit;
 
   const task = (async () => {
-    const ctx = await resolveContext(use, normalizeOptions(options, fx.file), fx.file);
+    const ctx = await resolveContext(use, normalizeOptions(options), fx.file);
     return { ctx, index: createTextIndex(fx.raw, ctx.options as never) };
   })();
   indexCache.set(key, task);
@@ -119,17 +118,11 @@ async function buildIndex(fx: LoadedFixture, options: RawOptions, use: readonly 
 /**
  * 把 JSON 友好的选项转成真正的 `MatchOptions`。
  *
- * 目前只有一处需要翻译：`ellipsis` 里的 `{ regex, flags }`。
- * 其余键名与 `MatchOptions` 完全同名同义，直接透传。
+ * 所有键名与 `MatchOptions` 同名同义，直接透传；省略约定是固定协议，
+ * JSON 里只可能写 boolean 开关，不存在需要翻译的正则声明。
  */
-function normalizeOptions(options: RawOptions, at: string): RawOptions {
-  const out: RawOptions = { ...options };
-  if (Array.isArray(out.ellipsis)) {
-    out.ellipsis = out.ellipsis.map((p, i) =>
-      isRegexSpec(p) ? toRegExp(p, `${at} > ellipsis[${i}]`) : p
-    );
-  }
-  return out;
+function normalizeOptions(options: RawOptions): RawOptions {
+  return { ...options };
 }
 
 /**

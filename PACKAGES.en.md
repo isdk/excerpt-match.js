@@ -268,7 +268,7 @@ The root package has 25 options; most are scene-dependent:
 |---|---|---|---|
 | for | citation checking | highlighting | dedup / retrieval |
 | `ignorePunctuation` | false | false | **true** |
-| `allowSegmented` | **false** | true | true |
+| `ellipsis` (omission convention) | **false** | true | true |
 | `allowCrossBlock` | **false** | true | true |
 | `maxCrossBlocks` | 1 | inf | inf |
 | `checkPolarity` | true | true | true |

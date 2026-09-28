@@ -41,7 +41,6 @@ export type {
   FallbackMatcher,
   Candidate,
   MatchContext,
-  EllipsisPattern,
 } from './types';
 export { NO_MATCH, isHit, DEFAULT_ELLIPSIS } from './types';
 

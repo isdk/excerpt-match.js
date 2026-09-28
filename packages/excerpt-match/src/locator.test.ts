@@ -5,7 +5,6 @@ import {
   isHit,
   NO_MATCH,
   detectLanguageProfile,
-  DEFAULT_ELLIPSIS,
   createDmpEsFallback,
   createDmpFallback,
   tokenize,
@@ -69,10 +68,10 @@ describe('确定性层 T0/T1/T2', () => {
     expect(locateExcerpt('这件事不，是这样的', '这件事不是这样的').kind).toBe('none');
   });
 
-  it('T2 省略号分段锚点', () => {
+  it('T2 约定省略标记（固定协议：〔略〕等方括号族）触发分段锚点', () => {
     const doc =
       '第一条 为了保护民事主体的合法权益，调整民事关系，维护社会和经济秩序，适应中国特色社会主义发展要求，弘扬社会主义核心价值观，根据宪法，制定本法。';
-    const r = locateExcerpt('为了保护民事主体的合法权益……根据宪法，制定本法。', doc);
+    const r = locateExcerpt('为了保护民事主体的合法权益〔略〕根据宪法，制定本法。', doc);
     expect(r.kind).toBe('segmented');
     const s = doc.slice(r.index, r.index + r.length);
     expect(s.startsWith('为了保护')).toBe(true);
@@ -81,7 +80,7 @@ describe('确定性层 T0/T1/T2', () => {
 
   it('T2 拒绝过短碎片', () => {
     const doc = '甲说了一句话，乙说了另一句话，丙又说了第三句话';
-    expect(locateExcerpt('甲……丙', doc).kind).toBe('none');
+    expect(locateExcerpt('甲〔略〕丙', doc).kind).toBe('none');
   });
 });
 
@@ -137,16 +136,16 @@ describe('T3：diff-match-patch', () => {
 });
 
 
-describe('自定义省略号（T2）', () => {
+describe('固定的省略约定（T2）', () => {
   const doc =
     '第一条 为了保护民事主体的合法权益，调整民事关系，维护社会和经济秩序，' +
     '适应中国特色社会主义发展要求，弘扬社会主义核心价值观，根据宪法，制定本法。';
 
-  it('默认模式：... 与 …… 与 〔略〕', () => {
+  it('约定标记：〔略〕 / [略] / [...]（宽度折叠收敛成半角后同形）', () => {
     for (const ex of [
-      '为了保护民事主体的合法权益……根据宪法，制定本法。',
-      '为了保护民事主体的合法权益...根据宪法，制定本法。',
-      '为了保护民事主体的合法权益。。。根据宪法，制定本法。',
+      '为了保护民事主体的合法权益〔略〕根据宪法，制定本法。',
+      '为了保护民事主体的合法权益[略]根据宪法，制定本法。',
+      '为了保护民事主体的合法权益[...]根据宪法，制定本法。',
     ]) {
       const r = locateExcerpt(ex, doc);
       expect(r.kind).toBe('segmented');
@@ -154,73 +153,44 @@ describe('自定义省略号（T2）', () => {
     }
   });
 
-  it('自定义：完全替换默认模式', () => {
-    const ex = '为了保护民事主体的合法权益〔中略〕根据宪法，制定本法。';
-    // 默认模式不认 〔中略〕
-    expect(locateExcerpt(ex, doc).kind).toBe('none');
-    // 传入自定义模式后命中
-    const r = locateExcerpt(ex, doc, { ellipsis: ['〔中略〕'] });
-    expect(r.kind).toBe('segmented');
-    expect(doc.slice(r.index, r.index + r.length)).toContain('根据宪法，制定本法。');
-  });
-
-  it('自定义：支持多个模式 + 正则', () => {
-    const cases: Array<[string, string]> = [
-      ['为了保护民事主体的合法权益〔中略〕根据宪法，制定本法。', '〔中略〕'],
-      ['为了保护民事主体的合法权益[snip]根据宪法，制定本法。', '[snip]'],
-      ['为了保护民事主体的合法权益<<<>>>根据宪法，制定本法。', '<<<>>>'],
-    ];
-    const r0 = locateExcerpt(cases[0][0], doc, { ellipsis: ['〔中略〕', '[snip]', '<<<>>>'] });
-    expect(r0.kind).toBe('segmented');
-    for (const [ex] of cases) {
-      expect(locateExcerpt(ex, doc, { ellipsis: ['〔中略〕', '[snip]', '<<<>>>'] }).kind).toBe('segmented');
+  it('正文式省略号（…… / ...）与正文标点同形，永远按内容处理 → none', () => {
+    for (const ex of [
+      '为了保护民事主体的合法权益……根据宪法，制定本法。',
+      '为了保护民事主体的合法权益...根据宪法，制定本法。',
+    ]) {
+      expect(locateExcerpt(ex, doc).kind).toBe('none');
     }
   });
 
-  it('字符串按字面量匹配，不被当成正则', () => {
-    // '...' 若被当正则会匹配任意三字符，导致处处可切
-    const r = locateExcerpt('为了保护民事主体的合法权益...根据宪法，制定本法。', doc, { ellipsis: ['...'] });
-    expect(r.kind).toBe('segmented');
-    // 三个任意字符不应被当作省略号
-    expect(locateExcerpt('为了保护民事主体的合法权益abc根据宪法，制定本法。', doc, { ellipsis: ['...'] }).kind).toBe('none');
-  });
-
-  it('正则模式按原样使用', () => {
-    const r = locateExcerpt(
-      '为了保护民事主体的合法权益---根据宪法，制定本法。',
-      doc,
-      { ellipsis: [/\s*-{2,}\s*/] }
-    );
-    expect(r.kind).toBe('segmented');
-  });
-
-  it('可 concat 默认模式（保留 + 追加）', () => {
+  it('约定不可自定义：传入模式数组不改变切分行为', () => {
+    // 旧版本允许传入自定义省略模式；固定协议下数组被整体忽略，
+    // 试图把「...」变成省略约定不会成功（它保持普通标点身份）
+    const custom = ['〔中略〕', '...', /…+/] as never;
     const ex = '为了保护民事主体的合法权益〔中略〕根据宪法，制定本法。';
-    const r = locateExcerpt(ex, doc, { ellipsis: [...DEFAULT_ELLIPSIS, '〔中略〕'] });
-    expect(r.kind).toBe('segmented');
-    // 默认模式仍然生效
-    expect(locateExcerpt('为了保护民事主体的合法权益……根据宪法，制定本法。', doc, {
-      ellipsis: [...DEFAULT_ELLIPSIS, '〔中略〕'],
-    }).kind).toBe('segmented');
+    expect(locateExcerpt(ex, doc, { ellipsis: custom }).kind).toBe('none');
+    // 约定标记仍然只认固定集合
+    expect(locateExcerpt('为了保护民事主体的合法权益〔略〕根据宪法，制定本法。', doc, { ellipsis: custom }).kind).toBe('segmented');
   });
 
-  it('归一化陷阱：全角括号会被折叠，模式仍能匹配', () => {
-    // 切分发生在归一化之后，NFKC 把 〔中略〕 折成 [中略]。
-    // 字符串模式必须先过同样的归一化，否则永远匹配不上。
-    const ex = '为了保护民事主体的合法权益〔中略〕根据宪法，制定本法。';
-    expect(locateExcerpt(ex, doc, { ellipsis: ['〔中略〕'] }).kind).toBe('segmented');
-    // 直接写归一化后的半角形式同样可用
-    expect(locateExcerpt(ex, doc, { ellipsis: ['[中略]'] }).kind).toBe('segmented');
-  });
-
-  it('空数组 = 关闭 T2（不是「处处可切」）', () => {
-    const ex = '为了保护民事主体的合法权益……根据宪法，制定本法。';
+  it('ellipsis: false 整体关闭：约定标记降级为普通文本', () => {
+    const ex = '为了保护民事主体的合法权益〔略〕根据宪法，制定本法。';
     expect(locateExcerpt(ex, doc).kind).toBe('segmented');
-    expect(locateExcerpt(ex, doc, { ellipsis: [] }).kind).toBe('none');
+    expect(locateExcerpt(ex, doc, { ellipsis: false }).kind).toBe('none');
+  });
+
+  it('strict 预设即 ellipsis: false（引用校验不跨省略号）', () => {
+    const ex = '为了保护民事主体的合法权益〔略〕根据宪法，制定本法。';
+    expect(locateExcerpt(ex, doc, { preset: 'strict' }).kind).toBe('none');
+  });
+
+  it('ignoreWidth: false 也不影响约定（切分正则按原文形态预归一，与保护区共用假设）', () => {
+    // 管线的宽度折叠把 〔 收敛成 [；ignoreWidth: false 时正则按原文形态命中
+    const ex = '为了保护民事主体的合法权益〔略〕根据宪法，制定本法。';
+    expect(locateExcerpt(ex, doc, { ignoreWidth: false }).kind).toBe('segmented');
   });
 
   it('重复调用结果稳定（lastIndex 不残留）', () => {
-    const ex = '为了保护民事主体的合法权益……根据宪法，制定本法。';
+    const ex = '为了保护民事主体的合法权益〔略〕根据宪法，制定本法。';
     for (let i = 0; i < 5; i++) {
       expect(locateExcerpt(ex, doc).kind).toBe('segmented');
     }

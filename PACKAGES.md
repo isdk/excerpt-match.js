@@ -238,7 +238,7 @@ pnpm run build       # pnpm -r，按拓扑顺序构建各包
 |---|---|---|---|
 | 场景 | 引用校验 / 取证 | 高亮 / 锚定 | 查重 / 召回 |
 | `ignorePunctuation` | false | false | **true** |
-| `allowSegmented` | **false** | true | true |
+| `ellipsis`（约定省略标记） | **false** | true | true |
 | `allowCrossBlock` | **false** | true | true |
 | `maxCrossBlocks` | 1 | ∞ | ∞ |
 | `groupingUnderscore` | false | false | **true** |

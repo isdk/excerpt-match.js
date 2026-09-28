@@ -30,7 +30,7 @@ export type PresetName = 'strict' | 'default' | 'loose';
  * 而实际上不是，比漏掉一次命中严重得多。
  *
  * 关键取舍：
- * - `allowSegmented: false` —— 分段锚点会跨过省略号拼接，
+ * - `ellipsis: false` —— 分段锚点会跨过省略标记拼接，
  *   短锚点可能在长文里拼出荒谬的 span
  * - `maxCrossBlocks: 1` —— 引用不该跨段
  * - `checkPolarity: true` —— 拦住「意思相反但字面相近」的摘录
@@ -49,7 +49,7 @@ export const STRICT: MatchOptions = {
   normalizeIdentifierSeparators: false,
 
   // 限定在单段内
-  allowSegmented: false,
+  ellipsis: false, // 约定省略标记不参与切分：引用不该跨过省略号
   allowCrossBlock: false,
   maxCrossBlocks: 1,
 
@@ -82,7 +82,7 @@ export const DEFAULT_PRESET: MatchOptions = {
   splitCamelCase: false,
   normalizeIdentifierSeparators: false,
 
-  allowSegmented: true, // 人工摘引常用「……」
+  ellipsis: true, // 摘录用约定省略标记（如〔略〕）表达「此处省略」
   allowCrossBlock: true,
   maxCrossBlocks: Infinity, // 只强制连续，不限段数
 
@@ -122,7 +122,7 @@ export const LOOSE: MatchOptions = {
   splitCamelCase: false,
   normalizeIdentifierSeparators: true, // 宽松：tensor_flow ≡ TensorFlow
 
-  allowSegmented: true,
+  ellipsis: true,
   allowCrossBlock: true,
   maxCrossBlocks: Infinity,
 

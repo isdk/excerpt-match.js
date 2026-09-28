@@ -27,7 +27,7 @@ describe('withPreset 合并规则', () => {
   });
 
   it('按名字取到对应预设', () => {
-    expect(withPreset({ preset: 'strict' }).allowSegmented).toBe(STRICT.allowSegmented);
+    expect(withPreset({ preset: 'strict' }).ellipsis).toBe(STRICT.ellipsis);
     expect(withPreset({ preset: 'loose' }).ignorePunctuation).toBe(LOOSE.ignorePunctuation);
   });
 
@@ -58,9 +58,9 @@ describe('三档语义差异', () => {
     expect(locateExcerpt('甲乙', doc, { preset: 'strict' }).kind).not.toBe('none');
   });
 
-  it('★ strict 不接受分段锚点（省略号）', () => {
+  it('★ strict 不接受分段锚点（约定省略标记，即 ellipsis: false）', () => {
     const doc = '前段内容中间内容后段内容';
-    const excerpt = '前段内容……后段内容';
+    const excerpt = '前段内容〔略〕后段内容';
     expect(locateExcerpt(excerpt, doc, { preset: 'strict' }).kind).toBe('none');
     expect(locateExcerpt(excerpt, doc, { preset: 'default' }).kind).not.toBe('none');
   });

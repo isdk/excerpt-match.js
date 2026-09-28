@@ -36,12 +36,6 @@ export type RawOptions = Record<string, unknown>;
 /** 期望输出。语义见 match-ex：`对象=包含匹配`，字符串默认子串，`"/re/flags"` 为正则 */
 export type Expectation = Record<string, unknown>;
 
-/** `{ "regex": "...", "flags": "i" }` —— JSON 里表达 RegExp 的显式写法 */
-export interface RegexSpec {
-  regex: string;
-  flags?: string;
-}
-
 /**
  * `skip` / `only` 两级都支持：**fixture 级**（整个目录）与**用例级**（`cases[]` 的某一项）。
  *
@@ -265,15 +259,3 @@ export function schedule(fixtures: readonly LoadedFixture[]): ScheduledCase[] {
   return out;
 }
 
-/** 把 `{ regex, flags }` 转成 RegExp。JSON 里没法直接写字面量，这是唯一需要显式声明的地方 */
-export function toRegExp(spec: unknown, at: string): RegExp {
-  const s = spec as RegexSpec;
-  if (!s || typeof s.regex !== 'string') {
-    throw new Error(`${at}: 期望 { "regex": "...", "flags": "i" } 形式的正则声明，实际 ${JSON.stringify(spec)}`);
-  }
-  return new RegExp(s.regex, s.flags);
-}
-
-export function isRegexSpec(v: unknown): v is RegexSpec {
-  return !!v && typeof v === 'object' && typeof (v as RegexSpec).regex === 'string';
-}

@@ -207,17 +207,38 @@ describe('迁移后不再制造的假命中', () => {
   const doc = '本院认为，被告构成违约。\n\n综上，本院判决如下：赔偿原告损失。';
 
   it('★ 省略片段的顺序不做校验 = 手搓版的漏洞', async () => {
-    const reversed = '本院判决如下……本院认为，被告构成违约。';
+    // 手搓版只认 …… 切分，库侧用约定省略标记 —— 两边各用各的省略写法对照
+    const reversedLegacy = '本院判决如下……本院认为，被告构成违约。';
+    const reversed = '本院判决如下〔略〕本院认为，被告构成违约。';
     // 两段都在文档里、长度也够 —— 手搓版只看「存在」，不管先后与相邻
-    expect(legacyIsExcerptOfDoc(reversed, doc)).toBe(true);
+    expect(legacyIsExcerptOfDoc(reversedLegacy, doc)).toBe(true);
     // 本库的 T2 是链式锚点：必须按原文顺序命中
     expect((await matchExcerpt(reversed, doc)).found).toBe(false);
   });
 
   it('顺序正确的省略摘录仍然通过', async () => {
-    const r = await matchExcerpt('本院认为，被告构成违约。……综上，本院判决如下', doc);
+    const r = await matchExcerpt('本院认为，被告构成违约。〔略〕综上，本院判决如下', doc);
     expect(r.found).toBe(true);
     expect(r.kind).toBe('segmented');
+  });
+
+  it('★ ellipsis: false 从高层入口透传到定位层（约定关闭 → segmented 消失）', async () => {
+    const ex = '本院认为，被告构成违约。〔略〕综上，本院判决如下';
+    // 上一条已证明默认约定启用时是 segmented；这里反证开关在高层同样生效
+    const r = await matchExcerpt(ex, doc, { ellipsis: false, fallbacks: [] });
+    expect(r.found).toBe(false);
+    expect(r.kind).toBe('none');
+  });
+
+  it('★ ellipsis 经 ...rest 透传 —— 守卫：有人把它加进装配解构列表时此处变红', async () => {
+    // resolveMatcherOptions 靠 ...rest 把 ellipsis 原样带进 MatchOptions。
+    // 若日后有人把 ellipsis 提出来单独装配（比如错误地当作模式数组处理），
+    // 透传就断了：默认约定会复活，false 失效 → 此处 expected false 变 true。
+    // 锚点必须 ≥ minSegmentLength(4)：短锚点会被碎片守卫拒绝（与约定开关无关）
+    const doc2 = '前半段内容直接相邻后半段内容';
+    const ex2 = '前半段内容〔略〕后半段内容';
+    expect((await matchExcerpt(ex2, doc2)).kind).toBe('segmented');
+    expect((await matchExcerpt(ex2, doc2, { ellipsis: false, fallbacks: [] })).kind).toBe('none');
   });
 });
 

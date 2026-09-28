@@ -10,26 +10,32 @@ import { locateExcerpt, isHit } from './index';
 describe('忽略标点时，摘录里的省略表达默认受保护', () => {
   const doc = '本院认为，被告构成根本违约。\n\n综上，被告应承担全部责任。';
 
-  it('★ 开了 ignorePunctuation，摘录带「……」仍能走分段锚点', () => {
-    const r = locateExcerpt('本院认为……被告应承担全部责任。', doc, { ignorePunctuation: true });
+  it('★ 开了 ignorePunctuation，摘录带约定省略标记「〔略〕」仍能走分段锚点', () => {
+    const r = locateExcerpt('本院认为〔略〕被告应承担全部责任。', doc, { ignorePunctuation: true });
     expect(isHit(r)).toBe(true);
     expect(r.kind).toBe('segmented');
   });
 
   it('对照：显式允许折叠省略表达 → 退化到普通 T1（不再是分段锚点）', () => {
-    const r = locateExcerpt('本院认为……被告应承担全部责任。', doc, {
+    const r = locateExcerpt('本院认为〔略〕被告应承担全部责任。', doc, {
       ignorePunctuation: { preserveEllipsis: false },
     });
     expect(r.kind).not.toBe('segmented');
   });
 
-  it('自定义省略表达同样受保护 —— keep 与 ellipsis 共用一套模式', () => {
-    const r = locateExcerpt('本院认为〔略〕被告应承担全部责任。', doc, {
-      ellipsis: ['〔略〕'],
+  it('★ 正文式省略号（……）不是约定标记：ignorePunctuation 下随标点折叠 → 走 T1', () => {
+    // 「本院认为」与「被告应承担全部责任」在文档里隔着别的段落，T1 跨不过去 → none。
+    // 这正是「…… 是正文内容不是约定」的体现：它没有保护区，也不触发切分。
+    expect(locateExcerpt('本院认为……被告应承担全部责任。', doc, { ignorePunctuation: true }).kind).toBe('none');
+  });
+
+  it('★ ellipsis: false 时约定标记不再受保护 —— 分段能力随之消失', () => {
+    // 关掉的约定就是普通文本：〔略〕随标点折叠后只剩两段裸文字，
+    // 中间隔着整段内容，T1 跨不过去 → none（这正是「关闭约定」的预期降级）
+    expect(locateExcerpt('本院认为〔略〕被告应承担全部责任。', doc, {
       ignorePunctuation: true,
-    });
-    expect(isHit(r)).toBe(true);
-    expect(r.kind).toBe('segmented');
+      ellipsis: false,
+    }).kind).toBe('none');
   });
 });
 

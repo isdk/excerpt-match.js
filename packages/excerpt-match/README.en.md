@@ -41,7 +41,7 @@ locateExcerpt(ex, text, { preset: 'loose', ignorePunctuation: false });
 
 | preset | for | trade-off |
 |---|---|---|
-| `strict` | citation checking / forensics | prefer a miss to a false hit; no cross-block, no segmented anchors, no fuzzy |
+| `strict` | citation checking / forensics | prefer a miss to a false hit; no cross-block, no omission convention (`ellipsis: false`), no fuzzy |
 | `default` | highlighting / anchoring / notes | balanced; segmented anchors and cross-block allowed |
 | `loose` | dedup / retrieval | maximize recall, rank by `score`; ignores punctuation, merges identifier variants |
 
@@ -162,7 +162,7 @@ On miss: `{ kind: 'none', index: -1, length: 0, score: 0 }` (i.e. `MISS`).
 |---|---|---|---|
 | T0 | `exact` | nothing | `indexOf` on visible text |
 | T1 | `normalized` | whitespace / full-width / punctuation / case / zero-width | built-in normalization |
-| T2 | `segmented` | ellipsis in the excerpt (`……`) | built-in anchor chain |
+| T2 | `segmented` | conventional omission markers in the excerpt (e.g. `〔略〕`) | built-in anchor chain |
 | T3 | `fuzzy` | typos, insertions, deletions | built-in by default (diff-match-patch-es); injectable |
 | T4 | `semantic` | paraphrase, synonym rewriting | external retriever (embedding / BM25) |
 | — | `none` | — | no match |
@@ -314,31 +314,41 @@ Otherwise a T0 exact match later in the document would short-circuit and bury a
 cross-block match that appears earlier. Ties break by strength:
 `exact` > `normalized` > `segmented`.
 
-### Custom ellipsis patterns (T2)
+### The fixed omission convention (T2)
 
-Common forms (`...`, `。。。`, `…`, `〔略〕`, `[...]`) work by default. Fully
-customizable, multiple patterns supported:
+T2 segmented anchors recognize exactly one **fixed set of convention markers**:
+`〔略〕` `[略]` `【略】` `[...]` — forms that never occur in normal prose, defined by
+`DEFAULT_ELLIPSIS`. **Custom patterns are not accepted**:
+
+- The omission convention is a **protocol between the excerpt producer and the
+  matcher**: the marker must never occur in prose and must mean the same thing for
+  every excerpt, or both sides stop agreeing on what "omitted here" means. Allowing
+  customization would allow breaking the protocol (e.g. adding `...`), and neither
+  false splits nor missed splits could be attributed;
+- `……` / `...` / `。。。` are **isomorphic with prose punctuation** — the `……` in an
+  excerpt may be a quoting ellipsis, or the source itself may read like that (then it
+  is content, not structure). The library cannot decide for you: they are **always
+  treated as content** and never trigger splitting.
+
+The caller's only freedom is a global switch:
 
 ```ts
-import { DEFAULT_ELLIPSIS } from './src';
+// Default: convention enabled (〔略〕 triggers segmented anchoring)
+locateExcerpt(ex, text);
 
-// Replace the defaults
-locateExcerpt(ex, text, { ellipsis: ['〔中略〕', /\[\s*snip\s*\]/] });
-
-// Keep defaults and append
-locateExcerpt(ex, text, { ellipsis: [...DEFAULT_ELLIPSIS, '〔中略〕'] });
-
-// Disable T2
-locateExcerpt(ex, text, { ellipsis: [] });
+// Citation verification / forensics: disable entirely (the strict preset does this)
+locateExcerpt(ex, text, { ellipsis: false });
 ```
 
-Strings match as **literals** (escaped internally, so `'...'` is not treated as a
-regex); regexes are used as-is. Whitespace around each pattern is ignored.
-
-> ⚠️ **Counter-intuitive**: splitting happens *after* normalization, and normalization
-> applies NFKC folding (`〔中略〕` → `[中略]`, `，` → `,`). String patterns are therefore
-> normalized with the same rules before matching — either full-width or half-width
-> works. Regexes operate on normalized text, so write them against the folded form.
+> ℹ️ **Post-normalization forms**: splitting happens *after* normalization — the
+> bracket family is width-folded to half-width (`〔略〕` → `[略]`), and `…` is
+> NFKC-expanded into a run of periods (`……` → `......`).
+> So regexes must be written against the **folded** form; markers inside excerpts
+> match in either original or folded form (the excerpt side is normalized first).
+>
+> One more guard: anchors **shorter than `minSegmentLength` (default 4) are rejected
+> outright** — single-character anchors like `甲〔略〕乙` can hit everywhere in a long
+> document and would assemble an absurd span.
 
 ### Risk
 
@@ -741,10 +751,15 @@ punctuation and keep word breaks, combine it with `keep`:
 { ignorePunctuation: { mode: 'drop', keep: [/\s+/] } }  // 'hello, world' → 'hello world'
 ```
 
-**Omission marks are protected by default**: `……` / `〔略〕` written by the user or the system
-are *structural* separators, not typesetting. Folding them silently disables T2 segmented
+**Convention markers are protected by default**: the omission markers written by the
+user or the system (the `〔略〕` family, see `DEFAULT_ELLIPSIS`) are *structural*
+separators, not typesetting. Folding them silently disables T2 segmented
 anchors — enabling "ignore punctuation" would then match **less** than disabling it, the
 opposite of the switch's intent. Opt out explicitly with `{ preserveEllipsis: false }`.
+
+With `ellipsis: false` they are no longer protected: a disabled convention is just
+plain text, and having `〔略〕` fold away with punctuation is exactly the expected
+degradation. `……` / `...` are never in the protected zone — they are prose content.
 
 > A backtick `` ` `` is `Sk`, `+ = ~` are `Sm` — none of them is `\p{P}`, so they are not
 > folded by default: they carry meaning in code and math text. Markdown's `**`, `` ` `` and
@@ -1095,9 +1110,9 @@ for (const it of items) it.ok = (await m.match(it.excerpt)).found;
 - A miss is **silent by default**; add `onMiss` when you want telemetry.
 
 Migrating from a hand-rolled `toLowerCase + includes` also buys: markdown flattening,
-cross-block copies, punctuation differences, the many ellipsis spellings (**matched as an
-ordered chain**, so fragments scattered across the document no longer pass), and T4 catching
-title-word injection and cross-section summaries.
+cross-block copies, punctuation differences, the fixed omission convention `〔略〕` (**matched
+as an ordered chain**, so fragments scattered across the document no longer pass), and T4
+catching title-word injection and cross-section summaries.
 
 ## Which entry point
 

@@ -186,3 +186,63 @@ describe('T4 未命中与降级', () => {
     expect(SRC.slice(hit.index, hit.index + hit.length)).toContain('目标词');
   });
 });
+
+describe('★ T4 与省略约定：语义层不需要感知约定，但坐标系必须一致', () => {
+  /**
+   * 结论先行（ADR 的边界验证，见 types.ts DEFAULT_ELLIPSIS）：
+   *
+   * T4 拿到的 needle 是**带标记**的摘录（约定启用时 〔略〕 在保护区以
+   * `[略]` 形态留在 needle 里），而文档侧从来没有这个标记 —— 所以
+   * 段内对齐的命中 span 只可能落在真实文本上，坐标不会因标记错位。
+   * 这正是「约定只作用于摘录侧」的设计使然，无需 T4 额外感知。
+   *
+   * 需要钉死的只有一条：**摘录归一化必须走 index.normalizeOptions**，
+   * 约定的开与关都通过它传导 —— 关掉时标记随标点折叠消失，needle 反而更干净。
+   */
+  const DOC = '本院认为被告构成违约。综上应当承担赔偿责任。';
+
+  it('★ 约定启用时 needle 带折叠形态的标记，且不破坏对齐坐标', async () => {
+    const idx = createTextIndex(DOC, { ignorePunctuation: true });
+    const { matcher, seen } = recording();
+
+    const hit = await locateSemantic(idx, '本院认为〔略〕被告构成违约', allSegments, {
+      aligner: matcher,
+    });
+
+    expect(seen.length).toBeGreaterThan(0);
+    // 摘录与文档同一套归一化选项：〔略〕受保护区 → 折叠成 [略] 留在 needle 里
+    expect(seen[0].needle).toBe('本院认为[略]被告构成违约');
+    // needle 在段内对不上（文档没有 [略]）→ 对齐失败 → 降级整段，而非错位命中
+    expect(hit.via).toBe('semantic:segment');
+    expect(hit.score).toBeLessThan(1);
+    // 但降级 span 仍是文档真实存在的段，坐标不漂
+    expect(DOC.slice(hit.index, hit.index + hit.length)).toContain('本院认为被告构成违约');
+  });
+
+  it('★ 约定关闭时（ellipsis: false）括号折叠消失，但「略」作为内容字符留下', async () => {
+    const idx = createTextIndex(DOC, { ignorePunctuation: true, ellipsis: false });
+    const { matcher, seen } = recording();
+
+    await locateSemantic(idx, '本院认为〔略〕被告构成违约', allSegments, {
+      aligner: matcher,
+    });
+
+    // 关掉的约定就是普通文本：括号对随标点折叠消失（CJK 间占位符被删），
+    // 但「略」是汉字、不是标点 —— 它本来就可能是正文内容，库无从得知
+    // 它曾是标记的一部分，所以照常保留。这正是「约定必须与正文可区分」的
+    // 又一佐证：标记一旦与正文同形，关闭约定后连痕迹都收不干净。
+    expect(seen[0].needle).toBe('本院认为略被告构成违约');
+  });
+
+  it('★ 无标记的普通摘录不受约定开关影响（对照）', async () => {
+    for (const ellipsis of [true, false] as const) {
+      const idx = createTextIndex(DOC, { ignorePunctuation: true, ellipsis });
+      const { matcher, seen } = recording();
+      const hit = await locateSemantic(idx, '本院认为被告构成违约', allSegments, {
+        aligner: matcher,
+      });
+      expect(seen[0].needle).toBe('本院认为被告构成违约');
+      expect(hit.via).toBe('semantic');
+    }
+  });
+});

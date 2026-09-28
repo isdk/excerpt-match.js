@@ -36,8 +36,8 @@
       }
     },
     {
-      "name": "strip 与 default 的差别之一：省略号分段只在 default/loose 生效",
-      "excerpt": "本院认为，……经审理查明",
+      "name": "strip 与 default 的差别之一：约定省略标记切分只在 default/loose 生效",
+      "excerpt": "本院认为，〔略〕经审理查明",
       "options": { "preset": "strict" },
       "expect": { "hit": false, "kind": "none" }
     },
