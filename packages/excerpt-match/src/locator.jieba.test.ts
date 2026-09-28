@@ -114,3 +114,27 @@ describe.skipIf(!jieba)('jieba 精确模式（可选依赖）', () => {
     expect(tagger!.foldableAt(long).size).toBe(0); // 超过 maxLength，跳过
   });
 });
+
+describe.skipIf(!jieba)('jieba 词数守卫（T2 锚点）', () => {
+  // 「他走了」= 3 个词但只有 3 个字符：字符阈值会误杀，词数阈值放行
+  const doc = '他走了很远了。中间是一大段与摘录无关的填充内容，专门用来拉开两个锚点之间的距离。前方就是终点。';
+  const ex = '他走了〔略〕前方就是终点。';
+  const seg = {
+    countWords: (t: string) => jieba.tokenize(t).filter((w: any) => /\p{L}|\p{N}/u.test(w.word)).length,
+  };
+
+  it('不给分词器：3 字锚点被字符阈值拒绝（低层 API 保持旧行为）', () => {
+    jieba.addDefaultDict();
+    expect(locateExcerpt(ex, doc).kind).toBe('none');
+  });
+
+  it('给了 jieba：3 字 = 3 个词 → segmented', () => {
+    jieba.addDefaultDict();
+    expect(locateExcerpt(ex, doc, { cjkWordSegmenter: seg }).kind).toBe('segmented');
+  });
+
+  it('单词锚点即使分词也仍被拒：「前方」是 1 个词', () => {
+    jieba.addDefaultDict();
+    expect(locateExcerpt('前方〔略〕终点。', doc, { cjkWordSegmenter: seg }).kind).toBe('none');
+  });
+});

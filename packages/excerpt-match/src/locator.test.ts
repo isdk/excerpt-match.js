@@ -197,6 +197,30 @@ describe('固定的省略约定（T2）', () => {
   });
 });
 
+describe('T2 锚点：空格分词语言的边界', () => {
+  it('中英混排锚点：按空格分词路径计词，汉字段也算词', () => {
+    const doc = '使用 React 18 开发。中间是一大段无关的填充内容。部署到 Vercel。';
+    expect(locateExcerpt('使用 React〔略〕部署到 Vercel。', doc).kind).toBe('segmented');
+  });
+
+  it('日文文档无 jieba 时退回字符计数：两字锚点仍被拒', () => {
+    const doc = '契約違反による損害賠償請求。填充内容。裁判所が判決を下した。';
+    expect(locateExcerpt('契約〔略〕判決。', doc).kind).toBe('none');
+    expect(locateExcerpt('契約違反による〔略〕裁判所が判決を下した。', doc).kind).toBe('segmented');
+  });
+
+  it('首尾标记只剩一个锚点 → none（链式至少两段）', () => {
+    const doc = 'Alpha here. Middle content. Beta there.';
+    expect(locateExcerpt('〔略〕Beta there.', doc).kind).toBe('none');
+    expect(locateExcerpt('Alpha here.〔略〕', doc).kind).toBe('none');
+  });
+
+  it('连续两个标记当一个用：相邻标记间的空段被丢弃', () => {
+    const doc = 'Alpha here. Middle content. Beta there.';
+    expect(locateExcerpt('Alpha〔略〕〔略〕Beta there.', doc).kind).toBe('segmented');
+  });
+});
+
 describe('T3 后端：diff-match-patch-es', () => {
   it('中文漏字能命中，分数与原版接近', () => {
     const doc = '本院认为，被告的行为已经构成根本违约，应当承担违约责任。';

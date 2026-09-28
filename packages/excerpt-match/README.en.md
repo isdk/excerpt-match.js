@@ -346,9 +346,13 @@ locateExcerpt(ex, text, { ellipsis: false });
 > So regexes must be written against the **folded** form; markers inside excerpts
 > match in either original or folded form (the excerpt side is normalized first).
 >
-> One more guard: anchors **shorter than `minSegmentLength` (default 4) are rejected
-> outright** — single-character anchors like `甲〔略〕乙` can hit everywhere in a long
-> document and would assemble an absurd span.
+> One more guard: **too-weak anchors are rejected outright** — single-character
+> anchors like `甲〔略〕乙` can hit everywhere in a long document and would assemble
+> an absurd span. The threshold judges *lexical mass*, not raw characters: reaching
+> `minSegmentLength` (default 4) characters passes; in space-delimited languages two
+> complete words also pass (`go, I,` and `I am` are two words, not two characters);
+> Chinese judges by words the same way once jieba is assembled (`本院` = 1 word, still
+> rejected; `他走了` = 3 words, accepted).
 
 ### Risk
 

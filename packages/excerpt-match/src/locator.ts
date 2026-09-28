@@ -8,7 +8,7 @@
  */
 
 import type {
-  Candidate, ExcerptMatch, FallbackMatcher, FlatBlock, FlatResult, MatchContext,
+  Candidate, CjkWordSegmenter, ExcerptMatch, FallbackMatcher, FlatBlock, FlatResult, MatchContext,
   MatchOptions, NormalizedText,
 } from './types';
 import { NO_MATCH } from './types';
@@ -83,6 +83,7 @@ interface ResolvedOptions {
   groupingUnderscore: boolean;
   cjkNumerals: boolean;
   cjkNumeralParser?: ChineseNumeralParser;
+  cjkWordSegmenter?: CjkWordSegmenter;
   splitCamelCase: boolean;
   normalizeIdentifierSeparators: boolean;
   minSegmentLength: number;
@@ -333,6 +334,7 @@ function resolve(input: MatchOptions, text: string): ResolvedOptions {
     groupingUnderscore: o.groupingUnderscore ?? false,
     cjkNumerals: o.cjkNumerals ?? false,
     cjkNumeralParser: o.cjkNumeralParser,
+    cjkWordSegmenter: o.cjkWordSegmenter,
     splitCamelCase: o.splitCamelCase ?? false,
     normalizeIdentifierSeparators: o.normalizeIdentifierSeparators ?? false,
     minSegmentLength: o.minSegmentLength ?? 4,
@@ -575,6 +577,52 @@ function punctuationDiverges(
   return pageSide !== excerptSide;
 }
 
+/**
+ * 锚点里的「词」数 —— 供 T2 碎片守卫使用。
+ *
+ * @remarks
+ * 归一化后**空格分词语言**（拉丁 / 西里尔 / 希腊 ……）的词边界是 `\u0001` 占位符，
+ * 按占位符切段、只数含字母或数字的段（纯标点 / 符号不算词，这是「注意标点」的要求）。
+ *
+ * 中文没有空格：给了分词器就按分词器数词，没给就返回 `null` ——
+ * 此时守卫退回纯字符计数（旧行为），保证低层 API 的可复现性。
+ *
+ * @returns 词数；`null` = 该锚点所在脚本没有可用的词边界信息
+ */
+function wordCountOf(anchor: string, r: ResolvedOptions): number | null {
+  // 空格分词语言：占位符切段，只数含字母 / 数字的段（标点、符号不算词）
+  if (anchor.includes('\u0001')) {
+    let n = 0;
+    for (const seg of anchor.split('\u0001')) if (/[\p{L}\p{N}]/u.test(seg)) n++;
+    return n;
+  }
+  // 中文：没给分词器就没有词边界，退回字符计数（由调用方处理）
+  return r.cjkWordSegmenter ? r.cjkWordSegmenter.countWords(anchor) : null;
+}
+
+/**
+ * 两个完整的词足以唯一定位：`go, I,` 在长文里不会散布全篇，
+ * 而 `go` 单独一个词则会。字符阈值是为无空格语言校准的，
+ * 有词边界时不应再用它惩罚短词。
+ */
+const MIN_ANCHOR_WORDS = 2;
+
+/**
+ * T2 锚点是否太弱：碎片会散布全篇，拼出一个荒谬的超长 span。
+ *
+ * 判据是**词义质量**而非字符数：
+ * - 字符量达到 `minSegmentLength` → 直接放行（旧行为，中英文都适用）
+ * - 否则看词数：`>= MIN_ANCHOR_WORDS` 个完整的词同样是足够特异的锚点
+ *   （`go, I,` 是两个词，`I am` 是两个词）
+ * - 没有词边界信息（中文未给分词器）时，只认字符量 —— 退回旧行为
+ */
+function anchorTooWeak(anchor: string, r: ResolvedOptions): boolean {
+  if (anchor.split('\u0001').join('').length >= r.minSegmentLength) return false;
+  const words = wordCountOf(anchor, r);
+  if (words === null) return true;
+  return words < MIN_ANCHOR_WORDS;
+}
+
 /** T2：摘录自带省略号 → 切成若干锚点，按顺序链式定位 */
 function findSegmented(hay: NormalizedText, needle: string, r: ResolvedOptions): Candidate | null {
   const parts = needle.split(r.ellipsisSplit).filter((s) => s.length > 0);
@@ -583,7 +631,7 @@ function findSegmented(hay: NormalizedText, needle: string, r: ResolvedOptions):
   let start = -1;
   let end = -1;
   for (const p of parts) {
-    if (p.split('\u0001').join('').length < r.minSegmentLength) return null; // 碎片会散布全篇 → 拒绝
+    if (anchorTooWeak(p, r)) return null; // 碎片会散布全篇 → 拒绝
     const at = hay.text.indexOf(p, cursor);
     if (at < 0) return null;
     if (start < 0) start = at;

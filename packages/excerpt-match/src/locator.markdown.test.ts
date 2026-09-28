@@ -171,6 +171,28 @@ describe('跨块摘录', () => {
   });
 });
 
+describe('T2 分段锚点（md 模式）', () => {
+  // 归一化后的词边界是 \u0001 占位符：md 模式下同样要被切分一并吞掉，否则相邻锚点争抢
+  const mdDoc = [
+    '# 判决书',
+    '',
+    'If the defendant fails to pay, the court will go, I, will enforce the judgment.',
+    '',
+    'The parties further agree to arbitrate any dispute arising hereunder.',
+  ].join('\n');
+
+  it('「go, I,」锚点相邻不争抢 → segmented，且切出 md 源码', () => {
+    const r = locateExcerpt('the court will go, I, 〔略〕 will enforce the judgment.', mdDoc, { markdown: md });
+    expect(r.kind).toBe('segmented');
+    expect(mdDoc.slice(r.index, r.index + r.length)).toContain('the court will go, I, will enforce the judgment.');
+  });
+
+  it('两短词锚点按词数放行（字符不足 4）', () => {
+    const doc = '# 标题\n\nI am ready. 一大段无关填充内容。 He will come soon.\n';
+    expect(locateExcerpt('I am 〔略〕 He will come soon.', doc, { markdown: md }).kind).toBe('segmented');
+  });
+});
+
 describe('降级与健壮性', () => {
   it('regexFlattener 可用（不如 mdast 准）', () => {
     const simple = '# 标题\n\n本院认为，**被告**构成[违约](http://a.b)。\n\n- 第一项\n';

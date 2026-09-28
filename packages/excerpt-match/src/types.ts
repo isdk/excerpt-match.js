@@ -327,6 +327,26 @@ export interface MatchOptions {
   cjkNumeralParser?: ChineseNumeralParser;
 
   /**
+   * 中文分词后端，供 T2 锚点的「词数」守卫使用。
+   *
+   * @remarks
+   * 归一化后，**空格分词语言**的词边界是 `\u0001` 占位符，锚点可以直接按词计数；
+   * 中文没有空格，词边界只能靠分词器。注入本项后，`minSegmentLength` 守卫对中文
+   * 也按「词」而不是「字」判断（如「本院」是 1 个词、「被告违约」是 2 个词）。
+   *
+   * 低层 API（`locateExcerpt` / `createTextIndex`）需显式注入；
+   * 高层 API（`matchExcerpt` / `createExcerptMatcher`）在文档为中文时**自动装配**
+   * 内置的 jieba 分词器（见 `defaultCjkWordSegmenter`）。
+   *
+   * @example
+   * ```ts
+   * import * as jieba from '@isdk/nlp-jieba';
+   * locateExcerpt(ex, text, { cjkWordSegmenter: createCjkWordSegmenter(jieba) });
+   * ```
+   */
+  cjkWordSegmenter?: CjkWordSegmenter;
+
+  /**
    * 是否把驼峰标识符拆成带空格的形式（`HelloWorld` → `Hello World`）。
    *
    * @remarks
@@ -516,9 +536,16 @@ export interface MatchOptions {
   /**
    * T2 分段锚点的最短长度。
    *
-   * @remarks    * 太短的碎片会散布全篇，拼出一个荒谬的超长 span：
-    * 摘录「甲〔略〕乙」里的单字锚点在长文中处处可命中，永远拒绝。
-    * @defaultValue `4`
+   * @remarks
+   * 太短的碎片会散布全篇，拼出一个荒谬的超长 span：
+   * 摘录「甲〔略〕乙」里的单字锚点在长文中处处可命中，永远拒绝。
+   *
+   * 阈值按**词义质量**而非字符数判定：字符量达到本值直接放行；
+   * 否则，**空格分词语言**（英文等）里 `>= 2` 个完整的词同样放行
+   * （`go, I,`、`I am` 是两个词，不是两个字符）；中文在注入
+   * {@link MatchOptions.cjkWordSegmenter} 后同样按词判定（`本院` 是 1 个词，
+   * `他走了` 是 3 个词）。没给分词器时中文只认字符数，保持旧行为。
+   * @defaultValue `4`
    */
   minSegmentLength?: number;
 
@@ -591,6 +618,18 @@ export type EllipsisPattern = string | RegExp;
 
 /** 重新导出，方便调用方从入口一次性拿到 */
 export type { ParticleTagger };
+
+/**
+ * 中文分词器接口（T2 锚点词数守卫用）。
+ *
+ * @remarks
+ * 只需要「数词数」这一件事：标点、空白不算词。`@isdk/nlp-jieba` 的
+ * `tokenize` 天然满足（返回带偏移的词序列，标点也是独立 token 但不含字母）。
+ */
+export interface CjkWordSegmenter {
+  /** 返回 `text` 里的词数（不含纯标点 / 符号） */
+  countWords(text: string): number;
+}
 
 
 /** 归一化空间中的候选区间 */

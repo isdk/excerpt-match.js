@@ -1,5 +1,5 @@
 {
-  "description": "t2-segment-word-delimited：空格分词语言里，省略标记两侧的归一化占位符（\\u0001）必须被切分一并吞掉",
+  "description": "t2-segment-word-delimited：空格分词语言的 T2 守卫 —— 占位符切分与按词计数的锚点强度",
   "doc": "doc.txt",
   "cases": [
     {
@@ -22,6 +22,25 @@
         "score": 1,
         "span": "fails to pay, the court will go, I,",
         "visible": "fails to pay, the court will go, I,"
+      }
+    },
+    {
+      "name": "两短词锚点「I am」字符不足 4 但词数足够 → segmented（按词而非按字符）",
+      "excerpt": "I am 〔略〕 arbitrate any dispute arising hereunder.",
+      "expect": {
+        "hit": true,
+        "kind": "segmented",
+        "score": 1,
+        "span": "I am the prevailing party, and the parties further agree to arbitrate any dispute arising hereunder.",
+        "visible": "I am the prevailing party, and the parties further agree to arbitrate any dispute arising hereunder."
+      }
+    },
+    {
+      "name": "单个短词锚点「go」仍太弱 → none（一个词散布全篇）",
+      "excerpt": "go 〔略〕 arbitrate any dispute arising hereunder.",
+      "expect": {
+        "hit": false,
+        "kind": "none"
       }
     }
   ]

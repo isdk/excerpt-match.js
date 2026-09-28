@@ -41,6 +41,7 @@ export type {
   FallbackMatcher,
   Candidate,
   MatchContext,
+  CjkWordSegmenter,
 } from './types';
 export { NO_MATCH, isHit, DEFAULT_ELLIPSIS } from './types';
 
@@ -84,6 +85,7 @@ export type {
  */
 export {
   defaultCjkNumberParser,
+  defaultCjkWordSegmenter,
   defaultFuzzyFallback,
   defaultMarkdownFlattener,
   defaultParticleTagger,

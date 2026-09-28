@@ -43,7 +43,7 @@ import type { JiebaLike, ParticleTagger } from '@isdk/zh-particles';
 import type { DmpEsLike } from '@isdk/approx-text-match';
 
 import { createDmpEsFallback } from './fuzzyMatch';
-import type { FallbackMatcher, MarkdownFlattener } from './types';
+import type { CjkWordSegmenter, FallbackMatcher, MarkdownFlattener } from './types';
 
 /**
  * 惰性 + 记忆化的动态 import；失败记住 `undefined`，不反复重试。
@@ -193,4 +193,38 @@ async function buildParticleTagger(): Promise<ParticleTagger | null> {
     return null;
   }
   return createJiebaParticleTagger(jieba);
+}
+
+let wordSegmenter: Promise<CjkWordSegmenter | null> | undefined;
+
+/**
+ * 内置默认中文分词器（`@isdk/nlp-jieba`），供 T2 锚点的词数守卫使用。
+ *
+ * @returns 分词器；jieba 加载失败时为 `undefined`
+ *
+ * @remarks
+ * 与 {@link defaultParticleTagger} 共享同一次 jieba 加载（`loadJieba` 记忆化），
+ * 不额外付 wasm + 词典成本。词典在首次分词时加载（`addDefaultDict`），
+ * 词性判定与词数守卫各自调用一次，幂等。
+ */
+export function defaultCjkWordSegmenter(): Promise<CjkWordSegmenter | undefined> {
+  wordSegmenter ??= buildCjkWordSegmenter();
+  return wordSegmenter.then((v) => v ?? undefined);
+}
+
+async function buildCjkWordSegmenter(): Promise<CjkWordSegmenter | null> {
+  const jieba = await loadJieba() as JiebaLike | undefined;
+  if (!jieba || typeof jieba.addDefaultDict !== 'function' || typeof jieba.tokenize !== 'function') return null;
+  try {
+    jieba.addDefaultDict();
+  } catch {
+    return null;
+  }
+  return {
+    countWords(text: string): number {
+      let n = 0;
+      for (const t of jieba.tokenize(text)) if (/[\p{L}\p{N}]/u.test(t.word)) n++;
+      return n;
+    },
+  };
 }

@@ -22,6 +22,7 @@
  * | `aligner` | 与 `fallbacks` 同源，用于 T4 段内对齐 |
  * | `cjkNumeralParser` | 开了 `cjkNumerals` 时自动装配 `cjk-number` |
  * | `ignoreParticles: true` | 自动升级为内置 jieba 词性判定器 |
+ * | `cjkWordSegmenter` | 文档为中文时自动装配内置 jieba 分词器（T2 锚点按词计数） |
  *
  * 显式传入的选项永远覆盖默认。唯一没有默认的是 `retriever` ——
  * 语义召回需要 embedding / BM25 这类外部服务，本包不自带，不传就绝不碰语义层。
@@ -59,8 +60,10 @@ import type { TextIndex } from './locator';
 import type { SemanticRetriever } from './semanticMatch';
 import type { ExcerptMatch, FallbackMatcher, MarkdownFlattener, MatchOptions } from './types';
 import { NO_MATCH, isHit } from './types';
+import { detectLanguageProfile } from './languageProfiles';
 import {
   defaultCjkNumberParser,
+  defaultCjkWordSegmenter,
   defaultFuzzyFallback,
   defaultMarkdownFlattener,
   defaultParticleTagger,
@@ -160,8 +163,8 @@ interface ResolvedMatcherOptions {
  * 默认依赖的加载是异步的（见 `./defaults`），所以本函数也是 async ——
  * 高层入口因此统一 `await`（见 `createExcerptMatcher`）。
  */
-async function resolveMatcherOptions(o: ExcerptMatcherOptions): Promise<ResolvedMatcherOptions> {
-  const { retriever, aligner, minScore, onHit, onMiss, markdown, fallbacks, cjkNumeralParser, ignoreParticles, ...rest } = o;
+async function resolveMatcherOptions(o: ExcerptMatcherOptions, text: string): Promise<ResolvedMatcherOptions> {
+  const { retriever, aligner, minScore, onHit, onMiss, markdown, fallbacks, cjkNumeralParser, cjkWordSegmenter, ignoreParticles, ...rest } = o;
 
   // md 摊平器：不传 → 内置默认（mdast + GFM）；显式 null → 纯文本模式
   const md = markdown === undefined ? await defaultMarkdownFlattener() : markdown || undefined;
@@ -185,11 +188,16 @@ async function resolveMatcherOptions(o: ExcerptMatcherOptions): Promise<Resolved
     if (t) particles = t;
   }
 
+  // T2 锚点词数守卫的中文分词器：文档是中文时自动装配（英文文档不付 jieba 成本）
+  let words = cjkWordSegmenter;
+  if (!words && detectLanguageProfile(text).id === 'cjk') words = await defaultCjkWordSegmenter();
+
   const match: MatchOptions = {
     ...rest,
     markdown: md,
     fallbacks: fbs,
     cjkNumeralParser: parser,
+    cjkWordSegmenter: words,
     ignoreParticles: particles,
   };
 
@@ -279,7 +287,7 @@ export async function createExcerptMatcher(
   options: ExcerptMatcherOptions = {}
 ): Promise<ExcerptMatcher> {
   // 先装配默认依赖（可能涉及异步模块加载），再建索引 —— 选项必须一次配齐
-  const resolved = await resolveMatcherOptions(options);
+  const resolved = await resolveMatcherOptions(options, text);
   const index = createTextIndex(text, resolved.match);
 
   const match = async (excerpt: string): Promise<ExcerptMatchResult> => {
