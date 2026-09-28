@@ -58,7 +58,10 @@ function buildEllipsisRe(
     })
     .filter((x): x is string => x !== null);
   if (parts.length === 0) return NEVER_RE;
-  return new RegExp(`\\s*(?:${parts.join('|')})\\s*`, flags);
+  // 归一化后空白是 \u0001 占位符（不是 \s），切分必须一并吞掉 ——
+  // 否则摘录 `go,\u0001[略]\u0001will` 的两个锚点会争抢文档里唯一的那个占位符，
+  // 后一个锚点永远找不到 → 链式定位整体失败（单词空格分隔语言的典型故障）
+  return new RegExp(`[\\s\\u0001]*(?:${parts.join('|')})[\\s\\u0001]*`, flags);
 }
 
 interface ResolvedOptions {

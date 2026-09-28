@@ -1,0 +1,28 @@
+{
+  "description": "t2-segment-word-delimited：空格分词语言里，省略标记两侧的归一化占位符（\\u0001）必须被切分一并吞掉",
+  "doc": "doc.txt",
+  "cases": [
+    {
+      "name": "「go, I,」锚点在原文中紧邻下一锚点：占位符不争抢 → segmented",
+      "excerpt": "the court will go, I, 〔略〕 will enforce the judgment by execution.",
+      "expect": {
+        "hit": true,
+        "kind": "segmented",
+        "score": 1,
+        "span": "the court will go, I, will enforce the judgment by execution.",
+        "visible": "the court will go, I, will enforce the judgment by execution."
+      }
+    },
+    {
+      "name": "同一行的另一处相邻边界：「the court」与「will go, I,」共享唯一占位符",
+      "excerpt": "fails to pay, the court 〔略〕 will go, I,",
+      "expect": {
+        "hit": true,
+        "kind": "segmented",
+        "score": 1,
+        "span": "fails to pay, the court will go, I,",
+        "visible": "fails to pay, the court will go, I,"
+      }
+    }
+  ]
+}
