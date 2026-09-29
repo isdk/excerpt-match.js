@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.0](///compare/@isdk/approx-text-match/0.2.0...@isdk/approx-text-match/0.3.0) (2026-09-29)
+
+### ⚠ BREAKING CHANGES
+
+* **excerpt-match:** ellipsis 不再接受模式数组，改为 boolean；
+  allowSegmented 移除；PROSE_ELLIPSIS / EllipsisPattern 导出移除
+
+### Features
+
+* **excerpt-match:** 省略约定固化为协议，ellipsis 改为 boolean 开关 9a3ff46
+* **excerpt-match:** 新增 implicitEllipsis，识别省略中段却不带约定记号的摘要 7de17a2
+* **excerpt-match:** T2 锚点守卫按词而非按字符判定 f2c8459
+
+### Bug Fixes
+
+* **excerpt-match:** 修复空格分词语言省略标记两侧的占位符争抢 c016e29
+
 ## [0.2.0](///compare/@isdk/approx-text-match/0.1.1...@isdk/approx-text-match/0.2.0) (2026-09-22)
 
 ### ⚠ BREAKING CHANGES
