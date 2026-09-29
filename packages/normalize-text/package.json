@@ -1,6 +1,6 @@
 {
   "name": "@isdk/normalize-text",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Normalize text while keeping a coordinate map back to the source — for search highlighting, citation locating, and text diff",
   "license": "MIT",
   "keywords": [
