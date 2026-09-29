@@ -88,6 +88,8 @@ interface ResolvedOptions {
   normalizeIdentifierSeparators: boolean;
   minSegmentLength: number;
   maxGap: number;
+  /** 隐式省略开启时的锚点间隔上限（归一化字符数）；undefined = 关闭 */
+  implicitGap?: number;
   checkPolarity: boolean;
   negationLexicon?: NegationLexicon;
   /** 带 g：切分锚点用 */
@@ -339,6 +341,13 @@ function resolve(input: MatchOptions, text: string): ResolvedOptions {
     normalizeIdentifierSeparators: o.normalizeIdentifierSeparators ?? false,
     minSegmentLength: o.minSegmentLength ?? 4,
     maxGap: o.maxGap ?? Infinity,
+    // 隐式省略：true → 默认间隔上限；number → 调用方指定；false/不传 → 关闭
+    implicitGap:
+      o.implicitEllipsis === false || o.implicitEllipsis === undefined
+        ? undefined
+        : typeof o.implicitEllipsis === 'number'
+          ? o.implicitEllipsis
+          : DEFAULT_IMPLICIT_GAP,
     checkPolarity: o.checkPolarity ?? true,
     negationLexicon: o.negationLexicon,
     ellipsisSplit: buildEllipsisRe(DEFAULT_ELLIPSIS, 'g', normPattern),
@@ -607,6 +616,29 @@ function wordCountOf(anchor: string, r: ResolvedOptions): number | null {
  */
 const MIN_ANCHOR_WORDS = 2;
 
+/** 隐式省略开启时的默认锚点间隔上限（归一化字符数） */
+const DEFAULT_IMPLICIT_GAP = 500;
+
+/**
+ * 隐式省略的覆盖率下限：命中字数 / span 字数。
+ *
+ * 低于此值说明摘录只从 span 里挑了零星几句，span 大多是硬凑出来的 ——
+ * 「两句拼凑整章」的荒谬 span 在这里被拒绝。score 仍恒为 1（T0–T2 契约），
+ * 门禁交给结构与本下限，而不是把密度塞进 score。
+ */
+const MIN_IMPLICIT_COVERAGE = 0.25;
+
+/**
+ * 隐式省略的切分标点：句末与分句（原文空间，全 / 半角皆可）。
+ *
+ * 切分在**归一化之前**：`ignorePunctuation` 的 fold 模式会把 CJK 之间的标点
+ * 整体删掉，归一化后就找不到切分点了。
+ */
+const IMPLICIT_SPLIT = /[。．.！?!?；;，,]/;
+
+/** 命中 span 尾部补回被吃掉的收尾标点时用的类（fold 模式下标点已删，无可补） */
+const IMPLICIT_TAIL = /[。．.！?!?；;，,\u0001]/;
+
 /**
  * T2 锚点是否太弱：碎片会散布全篇，拼出一个荒谬的超长 span。
  *
@@ -621,6 +653,105 @@ function anchorTooWeak(anchor: string, r: ResolvedOptions): boolean {
   const words = wordCountOf(anchor, r);
   if (words === null) return true;
   return words < MIN_ANCHOR_WORDS;
+}
+
+/**
+ * 把摘录切成**隐式省略锚点**：按句末 / 分句标点切，但只在切下来的一侧足够强时下刀。
+ *
+ * @remarks
+ * 与 {@link findSegmented} 的区别只在切分依据：后者按约定记号切，本函数按标点切。
+ * 无条件切分会把 `3.14` 切出 `3`、把 `通常，使用…` 切出 `通常` —— 碎片被
+ * `anchorTooWeak` 整条否掉，连本该命中的摘要也跟着挂。所以下刀前先看强度：
+ * 缓冲不够强就把标点**留在锚点内部**（留在内部就能匹配原文的对应形态）。
+ * 末尾残片过短时回并进前一个锚点，保持原文形态。
+ *
+ * @returns 锚点数组（≥2 个才可能是隐式省略）；`null` = 切不出可用的锚点链
+ */
+function splitImplicitAnchors(
+  excerpt: string,
+  r: ResolvedOptions
+): string[] | null {
+  // 在**原文空间**切分：fold 模式会删掉 CJK 间标点，归一化后无从切起
+  const opts = toNormalizationOptions(r);
+  // 缓冲保留原文形态，强度判断在其归一化结果上做
+  const rawAnchors: string[] = [];
+  let buf = '';
+  // 最近一次落刀时被丢弃的分隔符 —— 末尾残片回并时要补回去，否则
+  // 「乙句。短的。」会回并成「乙句短的。」而匹配不到原文
+  let lastDelim = '';
+  for (const tk of excerpt.split(new RegExp(`(${IMPLICIT_SPLIT.source})`))) {
+    if (tk === '') continue;
+    if (!IMPLICIT_SPLIT.test(tk)) {
+      buf += tk;
+      continue;
+    }
+    // 缓冲足够强 → 落刀（分隔符本身被丢弃：它存在于原文，作为锚点间隔被跳过）；
+    // 否则标点留在缓冲里，与下一段一起成为更强的锚点（3.14 / e.g. 不碎裂）
+    const norm = normalizeWithMap(buf, opts).text;
+    if (norm.length > 0 && !anchorTooWeak(norm, r)) {
+      rawAnchors.push(buf);
+      buf = '';
+      lastDelim = tk;
+    } else {
+      buf += tk;
+    }
+  }
+  if (buf.length > 0) {
+    // 末尾残片过短 → 连同被丢弃的分隔符一起回并，保持原文形态
+    const norm = normalizeWithMap(buf, opts).text;
+    if (rawAnchors.length > 0 && (norm.length === 0 || anchorTooWeak(norm, r))) {
+      rawAnchors[rawAnchors.length - 1] += lastDelim + buf;
+    } else {
+      rawAnchors.push(buf);
+    }
+  }
+  // 各锚点单独归一化后与文档同处一个空间
+  const anchors = rawAnchors
+    .map((a) => normalizeWithMap(a, opts).text)
+    .filter((a) => a.length > 0);
+  return anchors.length >= 2 ? anchors : null;
+}
+
+/**
+ * T2 变体：摘录不带约定记号，但**结构上**就是「挑句子 + 隐式省略」。
+ *
+ * @remarks
+ * 链式定位骨架与 {@link findSegmented} 相同（顺序查找、`maxGap` 约束），
+ * 只是锚点来自句子切分。额外的两道守卫：
+ *
+ * - 间隔上限取 {@link ResolvedOptions.implicitGap}（而非 `maxGap` 的 `Infinity`）——
+ *   无记号省略没有协议背书，必须限制省略量；
+ * - 覆盖率 = 命中字数 / span 字数，低于 {@link MIN_IMPLICIT_COVERAGE} 拒绝。
+ *
+ * span 含被省略的中段（与 T2 一致）：摘录总结的是整个区间，出处就是那一段。
+ */
+function findImplicit(
+  hay: NormalizedText,
+  excerpt: string,
+  r: ResolvedOptions
+): (Candidate & { anchors: string[] }) | null {
+  const anchors = splitImplicitAnchors(excerpt, r);
+  if (!anchors) return null;
+  let cursor = 0;
+  let start = -1;
+  let end = -1;
+  let matched = 0;
+  for (const p of anchors) {
+    const at = hay.text.indexOf(p, cursor);
+    if (at < 0) return null; // 任一锚点找不到 → 不是这篇文档的摘要
+    if (start < 0) start = at;
+    if (end >= 0 && at - end > (r.implicitGap ?? Infinity)) return null; // 省略过多
+    end = at + p.length;
+    cursor = end;
+    matched += p.length;
+  }
+  if (start < 0 || end <= start) return null;
+  const span = end - start;
+  if (span > 0 && matched / span < MIN_IMPLICIT_COVERAGE) return null; // 零星几句拼凑整段
+  // 末锚点的收尾标点在切分时被当分隔符吃掉了 —— 摘录带着它，span 也该带回来
+  // （fold 模式下标点已从文档删除，无可补）
+  while (end < hay.text.length && IMPLICIT_TAIL.test(hay.text[end])) end++;
+  return { start, end, score: 1, anchors };
 }
 
 /** T2：摘录自带省略号 → 切成若干锚点，按顺序链式定位 */
@@ -819,6 +950,21 @@ function tryDirect(
         kind: 'segmented',
         score: 1,
         occurrences: 1,
+        punctFolded: punctuationDiverges(view, seg.start, seg.end, excerptRendered, r),
+      };
+    }
+  }
+  // 隐式省略：摘录挑句子总结、省略中段却不带约定记号（loose 档默认开）。
+  // 结构上与带记号的 T2 同构，只是锚点来自句子切分、省略量有上限、有覆盖率下限。
+  if (r.implicitGap !== undefined) {
+    const seg = findImplicit(view.norm, excerptRendered, r);
+    if (seg) {
+      return {
+        ...spanFromNormalized(text, view.norm, seg.start, seg.end, spanOpts(r, flat)),
+        kind: 'segmented',
+        score: 1,
+        // 首句在文中出现多处时存在歧义（与 T2 一样报出来，让调用方定夺）
+        occurrences: countOccurrences(view.norm.text, seg.anchors[0]),
         punctFolded: punctuationDiverges(view, seg.start, seg.end, excerptRendered, r),
       };
     }

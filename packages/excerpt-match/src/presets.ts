@@ -11,7 +11,7 @@ import type { MatchOptions } from './types';
  * |---|---|---|
  * | {@link STRICT} | 引用校验 / 取证 | 宁可漏，不可错。只走 T0–T2 |
  * | {@link DEFAULT_PRESET} | 高亮 / 锚定 / 笔记 | 平衡，允许 T3 近似 |
- * | {@link LOOSE} | 查重 / 召回 | 尽量命中，靠 `score` 排序 |
+ * | {@link LOOSE} | 查重 / 召回 | 尽量命中，靠 `score` 排序；隐式省略默认开 |
  *
  * @example
  * ```ts
@@ -105,6 +105,7 @@ export const DEFAULT_PRESET: MatchOptions = {
  * 与默认档的差别：
  * - `ignorePunctuation: true` —— 标点差异一律忽略
  * - `allowCrossBlock` + `maxCrossBlocks: Infinity`
+ * - `implicitEllipsis: true` —— 摘要不带约定记号地省略中段也命中（句子链）
  * - `minFallbackScore: 0.6` —— 放宽近似层门槛
  *
  * **注意**：本档**不会**自动注入 `fallbacks`。模糊匹配需要外部库
@@ -125,6 +126,7 @@ export const LOOSE: MatchOptions = {
   ellipsis: true,
   allowCrossBlock: true,
   maxCrossBlocks: Infinity,
+  implicitEllipsis: true, // 查重 / 召回：AI 摘要常省略中段而不带记号
 
   trimMarkdownEdges: false,
   expandMarkers: true,

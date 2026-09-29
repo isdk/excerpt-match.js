@@ -31,7 +31,7 @@ against visible text and return source coordinates.
 
 ## Presets
 
-Most of the 25 options are scene-dependent; you should not re-weigh them at
+Most of the 26 options are scene-dependent; you should not re-weigh them at
 every call site. Pick a `preset` once — **explicit options override it**:
 
 ```ts
@@ -43,7 +43,7 @@ locateExcerpt(ex, text, { preset: 'loose', ignorePunctuation: false });
 |---|---|---|
 | `strict` | citation checking / forensics | prefer a miss to a false hit; no cross-block, no omission convention (`ellipsis: false`), no fuzzy |
 | `default` | highlighting / anchoring / notes | balanced; segmented anchors and cross-block allowed |
-| `loose` | dedup / retrieval | maximize recall, rank by `score`; ignores punctuation, merges identifier variants |
+| `loose` | dedup / retrieval | maximize recall, rank by `score`; ignores punctuation, merges identifier variants, implicit ellipsis on |
 
 All three keep `checkPolarity: true` and leave `cjkNumerals` and
 `ignoreParticles` off — the first makes different words converge to the same
@@ -353,6 +353,65 @@ locateExcerpt(ex, text, { ellipsis: false });
 > complete words also pass (`go, I,` and `I am` are two words, not two characters);
 > Chinese judges by words the same way once jieba is assembled (`本院` = 1 word, still
 > rejected; `他走了` = 3 words, accepted).
+
+### Implicit ellipsis: summaries that pick sentences without writing the marker
+
+Many real excerpts are AI / human-written **summaries**: a few sentences picked
+from the source with whole stretches omitted, but **without** the `〔略〕` marker:
+
+```
+source  : Discuss complexity. Quicksort worst case O(n²). (6 sentences) Quicksort uses no extra space. It is an in-place algorithm.
+summary : Quicksort worst case O(n²). Quicksort uses no extra space. It is an in-place algorithm.
+```
+
+T0–T2 require literal contiguity, so such summaries always miss; the T3 fuzzy
+layer's only candidate scores lower as the omission grows (0.418 in this case),
+and the polarity guard often vetoes it on top. But structurally it **is** T2 with
+a marker — `implicitEllipsis` generalizes the segmented anchors: split the excerpt at
+sentence / clause punctuation and chain-locate in order, allowing omissions between
+anchors. Splitting happens **before** normalization (fold mode deletes inter-CJK
+punctuation, so there would be nothing to split after):
+
+```ts
+// enable explicitly
+matchExcerpt(ex, text, { implicitEllipsis: true });
+// or use the loose preset (on by default)
+matchExcerpt(ex, text, { preset: 'loose' });
+```
+
+| form | meaning |
+|---|---|
+| `false` (default) | off: unmarked omissions do not participate in matching (the conservative default for citation checking) |
+| `true` | on; up to 500 normalized characters may be omitted between anchors |
+| `number` | on; sets the omission limit to that value |
+
+**The span includes the omitted middle** — exactly like marked T2: the summary
+is about the *whole region*, so that region is the provenance. Slice `source`
+yourself if you need the individual sentences.
+
+Three guards (a false hit costs more than a miss):
+
+- **strength-gated cutting**: every anchor still passes `minSegmentLength`, and a cut
+  is only made where the cut-off side is strong enough — `3.14` / `e.g.` / `通常，使用…`
+  never produce `3` / `通常` fragments;
+- **omission limit**: a gap between adjacent anchors beyond the limit voids the whole
+  chain (unmarked omission has no protocol backing it, so the amount must be bounded);
+- **coverage floor 0.25** (matched chars / span chars): too low is rejected, blocking
+  the absurd "two sentences standing in for a whole chapter" span.
+
+> The three guards **stack** — they are not alternatives. A pitfall worth knowing:
+> verifying word-based strength (`他走了` = 3 words: under the 4-char threshold but
+> enough words) with too long a middle gets rejected by the coverage floor
+> (9/47 = 0.19 < 0.25) rather than by the word guard — coverage judges the whole
+> chain, independently of any single anchor's strength.
+>
+> With a Chinese segmenter injected (`cjkWordSegmenter`; the high-level entry
+> auto-assembles jieba), anchor strength is judged by **word count**: `他走了`
+> (3 words) passes, `前方` (1 word) is still rejected — the same guard as the marked
+> T2 path (see `locator.jieba.test.ts`).
+
+`score` stays 1 (keeping the T0–T2 layering promise) — gating is structural,
+not crammed into `score`.
 
 ### Risk
 

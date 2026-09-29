@@ -1,0 +1,74 @@
+{
+  "description": "md-summary-implicit-ellipsis：AI 生成的摘要挑句子总结、省略中段且不带约定记号 —— 隐式省略",
+  "use": ["matcher"],
+  "cases": [
+    {
+      "name": "隐式省略：摘要挑了首两句 + 末两句，中间 6 句被省略，无记号 → 命中，span 含被省略的中段",
+      "options": { "implicitEllipsis": true },
+      "excerpt": "快速排序在最坏情况下的时间复杂度是 O(n^2)。平均时间复杂度为 O(nlog n)。快速排序不会占用任何额外的空间（不包括为递归调用保留的空间）。这种算法被称为in-place算法，不需要额外的空间。",
+      "expect": {
+        "hit": true,
+        "kind": "segmented",
+        "score": 1,
+        "line": 3,
+        "crossesBlocks": true,
+        "span": {
+          "$and": [
+            { "$contains": "时间复杂度是" },
+            { "$contains": "O(n^2)" },
+            { "$contains": "通常，使用随机版本的快速排序" },
+            { "$contains": "**in-place**算法，不需要额外的空间。" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "对照组：同一摘要在省略处补上 〔略〕 → segmented 命中，span 含中段（现有一致性行为）",
+      "excerpt": "快速排序在最坏情况下的时间复杂度是 O(n^2)。平均时间复杂度为 O(nlog n)。〔略〕快速排序不会占用任何额外的空间（不包括为递归调用保留的空间）。这种算法被称为in-place算法，不需要额外的空间。",
+      "expect": {
+        "hit": true,
+        "kind": "segmented",
+        "score": 1,
+        "line": 3,
+        "crossesBlocks": true,
+        "span": {
+          "$and": [
+            { "$contains": "时间复杂度是" },
+            { "$contains": "O(n^2)" },
+            { "$contains": "通常，使用随机版本的快速排序" },
+            { "$contains": "**in-place**算法，不需要额外的空间。" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "preset: loose 默认开启隐式省略 → 同样命中",
+      "excerpt": "快速排序在最坏情况下的时间复杂度是 O(n^2)。平均时间复杂度为 O(nlog n)。快速排序不会占用任何额外的空间（不包括为递归调用保留的空间）。这种算法被称为in-place算法，不需要额外的空间。",
+      "options": { "preset": "loose" },
+      "expect": {
+        "hit": true,
+        "kind": "segmented",
+        "line": 3,
+        "span": { "$contains": "通常，使用随机版本的快速排序" }
+      }
+    },
+    {
+      "name": "守卫：隐式间隔上限 —— 中段省略超过 50 字 → none",
+      "excerpt": "快速排序在最坏情况下的时间复杂度是 O(n^2)。平均时间复杂度为 O(nlog n)。快速排序不会占用任何额外的空间（不包括为递归调用保留的空间）。这种算法被称为in-place算法，不需要额外的空间。",
+      "options": { "implicitEllipsis": 50 },
+      "expect": { "hit": false, "kind": "none" }
+    },
+    {
+      "name": "守卫：覆盖率下限 —— 只挑首末两句、中段全省 → none",
+      "excerpt": "快速排序在最坏情况下的时间复杂度是O(n^2)。这种算法被称为in-place算法，不需要额外的空间。",
+      "options": { "implicitEllipsis": true },
+      "expect": { "hit": false, "kind": "none" }
+    },
+    {
+      "name": "守卫：严格档不开启隐式省略 → none",
+      "excerpt": "快速排序在最坏情况下的时间复杂度是 O(n^2)。平均时间复杂度为 O(nlog n)。快速排序不会占用任何额外的空间（不包括为递归调用保留的空间）。这种算法被称为in-place算法，不需要额外的空间。",
+      "options": { "preset": "strict" },
+      "expect": { "hit": false, "kind": "none" }
+    }
+  ]
+}
